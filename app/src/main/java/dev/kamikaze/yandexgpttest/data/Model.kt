@@ -3,6 +3,27 @@ package dev.kamikaze.yandexgpttest.data
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class MessageRequest(
+    val modelUri: String,
+    val completionOptions: CompletionOptions,
+    val messages: List<Message>,
+    val json_object: Boolean,
+) {
+    @Serializable
+    data class CompletionOptions(
+        val stream: Boolean = false,
+        val temperature: Float = 0.3f,
+        val maxTokens: Int = 500,
+    )
+
+    @Serializable
+    data class Message(
+        val role: String,
+        val text: String,
+    )
+}
+
+@Serializable
 data class MessageResponse(
     val result: Result? = null,
     val error: ErrorInfo? = null, // Добавляем обработку ошибок
@@ -33,3 +54,10 @@ data class MessageResponse(
         val details: String? = null,
     )
 }
+
+data class UserMessage(
+    val id : Int,
+    val text: String,
+    val isUser: Boolean,
+    val timestamp: Long = System.currentTimeMillis(),
+)

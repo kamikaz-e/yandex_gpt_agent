@@ -1,7 +1,13 @@
 package dev.kamikaze.yandexgpttest
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,20 +18,50 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import dev.kamikaze.yandexgpttest.data.UserMessage
+import dev.kamikaze.yandexgpttest.utils.DeleteConfirmationDialog
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,67 +71,694 @@ fun ChatScreen(
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val showSettings by viewModel.showSettingsSheet.collectAsState()
+    val settings by viewModel.settings.collectAsState()
+    val showDeleteDialog by viewModel.showDeleteDialog.collectAsState()
+
     val lazyListState = rememberLazyListState()
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            lazyListState.animateScrollToItem(messages.size - 1)
-        }
-    }
-
+    // ❌ УБРАЛИ Box, используем Column для правильного layout
     Column(modifier = modifier.fillMaxSize()) {
-        // Заголовок
-        TopAppBar(
-            title = { Text("Yandex GPT Chat") },
-            actions = {
-                IconButton(
-                    onClick = { viewModel.clearChat() },
-                    enabled = !isLoading
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.ClearAll,
-                        contentDescription = "Очистить чат"
-                    )
-                }
-            }
-        )
-
-        // Список сообщений
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            state = lazyListState,
-            verticalArrangement = Arrangement.Top
+        // Заголовок в Column (НЕ внутри LazyColumn)
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            items(messages) { message ->
-                ChatMessageItem(userMessage = message)
-            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Yandex AI",
+                    style = MaterialTheme.typography.titleLarge
+                )
 
-            if (isLoading) {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.Start
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Индикатор формата
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp)
+                        Text(
+                            text = "${settings.responseFormat.displayName}",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text("Yandex GPT думает...")
+                    }
+
+                    // Кнопка настроек
+                    IconButton(
+                        onClick = { viewModel.toggleSettingsSheet() },
+                        enabled = !isLoading
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "Настройки"
+                        )
+                    }
+
+                    // Кнопка удаления
+                    IconButton(
+                        onClick = { viewModel.showDeleteConfirmationDialog() },
+                        enabled = !isLoading && messages.isNotEmpty()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Удалить чат"
+                        )
                     }
                 }
             }
         }
 
-        // Поле ввода
+        // LazyColumn занимает все оставшееся место как заваривать чай?
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f), // ❌ Weight вместо fillMaxSize + padding
+            state = lazyListState,
+            verticalArrangement = Arrangement.Top,
+            contentPadding = PaddingValues(8.dp) // ❌ УБРАЛИ bottom padding
+        ) {
+            // Сообщения с key для производительности
+            items(
+                items = messages,
+                key = { it.id } // Важно!
+            ) { message ->
+                if (message.isUser) {
+                    RegularChatMessageItem(userMessage = message)
+                } else {
+                    AIDisplayMessage(
+                        userMessage = message,
+                        viewModel = viewModel
+                    )
+                }
+            }
+
+            // Индикатор загрузки
+            if (isLoading) {
+                item {
+                    LoadingMessageItem(settings = settings)
+                }
+            }
+        }
+
+        // Поле ввода В Column (НЕ в Box)
         MessageInput(
+            isLoading = isLoading,
+            settings = settings,
             onSendMessage = { message ->
                 viewModel.sendMessage(message)
-            },
-            isLoading = isLoading
+            }
         )
+    }
+
+    // Диалоги (остаются как overlay)
+    if (showDeleteDialog) {
+        DeleteConfirmationDialog(
+            onConfirm = { viewModel.confirmDeleteChat() },
+            onDismiss = { viewModel.cancelDeleteChat() }
+        )
+    }
+
+    if (showSettings) {
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.toggleSettingsSheet() }
+        ) {
+            SettingsBottomSheet(
+                currentSettings = settings,
+                onSettingsChanged = { newSettings ->
+                    viewModel.updateSettings(newSettings)
+                },
+                onClose = { viewModel.toggleSettingsSheet() }
+            )
+        }
+    }
+}
+
+@Composable
+fun LoadingMessageItem(
+    settings: AISettings,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            shadowElevation = 1.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 3.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Column {
+                    Text(
+                        text = "Yandex AI ${settings.responseFormat.displayName} анализирует...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = settings.responseStyle.displayName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RegularChatMessageItem(
+    userMessage: UserMessage,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.End
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.85f),
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 4.dp
+            ),
+            color = MaterialTheme.colorScheme.primary,
+            shadowElevation = 2.dp
+        ) {
+            Text(
+                text = userMessage.text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun AIDisplayMessage(
+    userMessage: UserMessage,
+    viewModel: ChatViewModel, // ПРИНИМАЕМ viewModel
+    modifier: Modifier = Modifier,
+) {
+    // АНАЛИЗИРУЕМ сообщение ВНЕ Composable области
+    val displayType = remember(userMessage.text) {
+        viewModel.analyzeAIMessage(userMessage.text)
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.9f),
+            shape = RoundedCornerShape(
+                topStart = 4.dp,
+                topEnd = 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 16.dp
+            ),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            shadowElevation = 1.dp
+        ) {
+            // ОТОБРАЖАЕМ в зависимости от типа анализа
+            when (displayType) {
+                is AIDisplayType.StructuredJson -> {
+                    StructuredJsonMessage(
+                        parsedResponse = displayType.parsedResponse,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+
+                is AIDisplayType.RegularText -> {
+                    FallbackMessage(
+                        text = displayType.text,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FallbackMessage(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier.padding(16.dp)
+    )
+}
+
+
+@Composable
+fun MessageInput(
+    modifier: Modifier = Modifier,
+    isLoading: Boolean,
+    settings: AISettings,
+    onSendMessage: (String) -> Unit,
+) {
+    var messageText by remember { mutableStateOf("") }
+
+    Column(
+        modifier = modifier.fillMaxWidth()
+    ) {
+        // Индикатор формата и стиля
+        if (!isLoading) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Формат
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FormatListBulleted,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = settings.responseFormat.displayName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+
+                // Стиль
+                Surface(
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = settings.responseStyle.displayName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
+        }
+
+        // ПОЛНОЕ ПОЛЕ ВВОДА
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            // Поле ввода текста
+            OutlinedTextField(
+                value = messageText,
+                onValueChange = { messageText = it },
+                placeholder = {
+                    Text(
+                        text = "Введите сообщение...",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                textStyle = MaterialTheme.typography.bodyMedium,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                ),
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                enabled = !isLoading,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Send,
+                    keyboardType = KeyboardType.Text
+                ),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (messageText.isNotBlank()) {
+                            onSendMessage(messageText.trim())
+                            messageText = ""
+                        }
+                    }
+                )
+            )
+
+            // Кнопка отправки
+            IconButton(
+                onClick = {
+                    if (messageText.isNotBlank() && !isLoading) {
+                        onSendMessage(messageText.trim())
+                        messageText = ""
+                    }
+                },
+                enabled = messageText.isNotBlank() && !isLoading,
+                modifier = Modifier
+                    .background(
+                        color = if (messageText.isNotBlank() && !isLoading)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .padding(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Отправить",
+                    tint = if (messageText.isNotBlank() && !isLoading)
+                        MaterialTheme.colorScheme.onPrimary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StructuredJsonMessage(
+    parsedResponse: ParsedResponse,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Заголовок
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Структурированный ответ",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        // Summary секция
+        if (parsedResponse.summary.isNotBlank()) {
+            JsonSection(
+                title = "📌 Краткое резюме",
+                content = parsedResponse.summary,
+                backgroundColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                textColor = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        // Explanation секция
+        if (parsedResponse.explanation.isNotBlank()) {
+            JsonSection(
+                title = "📝 Подробное объяснение",
+                content = parsedResponse.explanation,
+                backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                textColor = MaterialTheme.colorScheme.onSurface
+            )
+        }
+
+        // Code секция
+        if (parsedResponse.code.isNotBlank()) {
+            CodeSection(
+                title = "💻 Примеры кода",
+                code = parsedResponse.code
+            )
+        }
+
+        // References секция
+        if (parsedResponse.references.isNotEmpty()) {
+            ReferencesSection(
+                title = "🔗 Ссылки",
+                references = parsedResponse.references
+            )
+        }
+
+        // Если все поля пустые - показываем предупреждение
+        if (parsedResponse.summary.isBlank() &&
+            parsedResponse.explanation.isBlank() &&
+            parsedResponse.code.isBlank() &&
+            parsedResponse.references.isEmpty()
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Не удалось распарсить JSON ответ",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun JsonSection(
+    title: String,
+    content: String,
+    backgroundColor: Color,
+    textColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = backgroundColor
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = textColor,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Text(
+                text = content,
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor
+            )
+        }
+    }
+}
+
+@Composable
+fun CodeSection(
+    title: String,
+    code: String,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Code,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            // Скроллабельный блок кода
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        RoundedCornerShape(8.dp)
+                    )
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                        RoundedCornerShape(8.dp)
+                    )
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp)
+                ) {
+                    item {
+                        Text(
+                            text = code,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontFamily = FontFamily.Monospace,
+                            lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.3
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun isValidJson(text: String): Boolean {
+    return try {
+        // Проверяем, что строка начинается с { или [
+        if (!text.trim().startsWith("{") && !text.trim().startsWith("[")) {
+            return false
+        }
+        Json.decodeFromString<Map<String, JsonElement>>(text)
+        true
+    } catch (e: Exception) {
+        false
+    }
+}
+
+@Composable
+fun ReferencesSection(
+    title: String,
+    references: List<String>,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Link,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            references.forEach { reference ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            // Здесь можно открыть ссылку
+                            // context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(reference)))
+                        }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = reference,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline
+                    )
+                }
+            }
+        }
     }
 }
