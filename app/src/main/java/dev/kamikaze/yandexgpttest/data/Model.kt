@@ -26,9 +26,9 @@ data class MessageRequest(
 @Serializable
 data class MessageResponse(
     val result: Result? = null,
-    val error: ErrorInfo? = null, // Добавляем обработку ошибок
+    val error: ErrorInfo? = null,
     val code: Int? = null,
-    val message: String? = null,
+    val message: String? = null
 ) {
     @Serializable
     data class Result(
@@ -55,9 +55,11 @@ data class MessageResponse(
     )
 }
 
-data class UserMessage(
-    val id : Int,
-    val text: String,
-    val isUser: Boolean,
-    val timestamp: Long = System.currentTimeMillis(),
+
+@Serializable
+data class ParsedResponse(
+    val summary: String = "",
+    val explanation: String = "",
+    val references: List<String> = emptyList(),
+    val metadata: Map<String, String> = emptyMap(),
 )

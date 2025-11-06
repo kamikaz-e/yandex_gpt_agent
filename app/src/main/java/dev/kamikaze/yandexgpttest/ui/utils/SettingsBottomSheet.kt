@@ -1,4 +1,4 @@
-package dev.kamikaze.yandexgpttest
+package dev.kamikaze.yandexgpttest.ui.utils
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,6 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import dev.kamikaze.yandexgpttest.data.prompt.ResponseFormat
+import dev.kamikaze.yandexgpttest.data.prompt.ResponseStyle
+import dev.kamikaze.yandexgpttest.ui.AISettings
 
 @Composable
 fun SettingsBottomSheet(

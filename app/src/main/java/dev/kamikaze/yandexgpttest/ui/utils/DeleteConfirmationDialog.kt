@@ -1,4 +1,4 @@
-package dev.kamikaze.yandexgpttest.utils
+package dev.kamikaze.yandexgpttest.ui.utils
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons

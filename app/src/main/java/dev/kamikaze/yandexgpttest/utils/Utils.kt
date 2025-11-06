@@ -1,6 +1,6 @@
 package dev.kamikaze.yandexgpttest.utils
 
-import dev.kamikaze.yandexgpttest.ParsedResponse
+import dev.kamikaze.yandexgpttest.data.ParsedResponse
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -13,7 +13,6 @@ fun parseJSON(text: String): ParsedResponse? {
         ParsedResponse(
             summary = json["summary"]?.toString()?.trim('"') ?: "",
             explanation = json["explanation"]?.toString()?.trim('"') ?: "",
-            code = json["code"]?.toString()?.trim('"') ?: "",
             references = json["references"]?.let { element ->
                 Json.decodeFromJsonElement<List<String>>(element)
             } ?: emptyList(),
@@ -45,7 +44,6 @@ fun parseMarkdown(text: String): ParsedResponse? {
         ParsedResponse(
             summary = summary,
             explanation = content.trim(),
-            code = "",
             references = emptyList(),
             metadata = mapOf("category" to category, "title" to title)
         )
@@ -62,7 +60,6 @@ fun parseCSV(text: String): ParsedResponse? {
             ParsedResponse(
                 summary = parts.getOrNull(0) ?: "",
                 explanation = parts.getOrNull(1) ?: "",
-                code = "",
                 references = emptyList(),
                 metadata = emptyMap()
             )
@@ -82,7 +79,6 @@ fun parseXML(text: String): ParsedResponse? {
         ParsedResponse(
             summary = summary,
             explanation = explanation,
-            code = "",
             references = emptyList(),
             metadata = mapOf("title" to title)
         )

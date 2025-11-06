@@ -1,4 +1,4 @@
-package dev.kamikaze.yandexgpttest
+package dev.kamikaze.yandexgpttest.ui.theme
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -22,12 +22,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
@@ -45,6 +45,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,8 +59,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import dev.kamikaze.yandexgpttest.data.UserMessage
-import dev.kamikaze.yandexgpttest.utils.DeleteConfirmationDialog
+import dev.kamikaze.yandexgpttest.AIDisplayType
+import dev.kamikaze.yandexgpttest.ChatViewModel
+import dev.kamikaze.yandexgpttest.data.ParsedResponse
+import dev.kamikaze.yandexgpttest.ui.AISettings
+import dev.kamikaze.yandexgpttest.ui.UserMessage
+import dev.kamikaze.yandexgpttest.ui.utils.DeleteConfirmationDialog
+import dev.kamikaze.yandexgpttest.ui.utils.SettingsBottomSheet
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
@@ -77,9 +83,13 @@ fun ChatScreen(
 
     val lazyListState = rememberLazyListState()
 
-    // ❌ УБРАЛИ Box, используем Column для правильного layout
+    LaunchedEffect(messages.size, isLoading, settings) {
+        if (messages.isNotEmpty()) {
+            lazyListState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
-        // Заголовок в Column (НЕ внутри LazyColumn)
         Surface(
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 2.dp,
@@ -107,7 +117,7 @@ fun ChatScreen(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
-                            text = "${settings.responseFormat.displayName}",
+                            text = settings.responseFormat.displayName,
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
@@ -138,19 +148,17 @@ fun ChatScreen(
             }
         }
 
-        // LazyColumn занимает все оставшееся место как заваривать чай?
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f), // ❌ Weight вместо fillMaxSize + padding
+                .weight(1f),
             state = lazyListState,
             verticalArrangement = Arrangement.Top,
-            contentPadding = PaddingValues(8.dp) // ❌ УБРАЛИ bottom padding
+            contentPadding = PaddingValues(8.dp)
         ) {
-            // Сообщения с key для производительности
             items(
                 items = messages,
-                key = { it.id } // Важно!
+                key = { "${it.id}-${settings.responseFormat}-${settings.responseStyle}" }
             ) { message ->
                 if (message.isUser) {
                     RegularChatMessageItem(userMessage = message)
@@ -344,7 +352,6 @@ fun FallbackMessage(
     )
 }
 
-
 @Composable
 fun MessageInput(
     modifier: Modifier = Modifier,
@@ -377,7 +384,7 @@ fun MessageInput(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FormatListBulleted,
+                            imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(14.dp)
@@ -391,7 +398,6 @@ fun MessageInput(
                     }
                 }
 
-                // Стиль
                 Surface(
                     color = MaterialTheme.colorScheme.secondaryContainer,
                     shape = RoundedCornerShape(12.dp)
@@ -541,14 +547,6 @@ fun StructuredJsonMessage(
             )
         }
 
-        // Code секция
-        if (parsedResponse.code.isNotBlank()) {
-            CodeSection(
-                title = "💻 Примеры кода",
-                code = parsedResponse.code
-            )
-        }
-
         // References секция
         if (parsedResponse.references.isNotEmpty()) {
             ReferencesSection(
@@ -560,7 +558,6 @@ fun StructuredJsonMessage(
         // Если все поля пустые - показываем предупреждение
         if (parsedResponse.summary.isBlank() &&
             parsedResponse.explanation.isBlank() &&
-            parsedResponse.code.isBlank() &&
             parsedResponse.references.isEmpty()
         ) {
             Surface(
@@ -621,81 +618,14 @@ fun JsonSection(
     }
 }
 
-@Composable
-fun CodeSection(
-    title: String,
-    code: String,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Code,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            // Скроллабельный блок кода
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        RoundedCornerShape(8.dp)
-                    )
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant,
-                        RoundedCornerShape(8.dp)
-                    )
-            ) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp)
-                ) {
-                    item {
-                        Text(
-                            text = code,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontFamily = FontFamily.Monospace,
-                            lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.3
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
 fun isValidJson(text: String): Boolean {
     return try {
-        // Проверяем, что строка начинается с { или [
         if (!text.trim().startsWith("{") && !text.trim().startsWith("[")) {
             return false
         }
         Json.decodeFromString<Map<String, JsonElement>>(text)
         true
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         false
     }
 }

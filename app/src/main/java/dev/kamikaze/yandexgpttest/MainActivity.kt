@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
+import dev.kamikaze.yandexgpttest.data.YandexApi
+import dev.kamikaze.yandexgpttest.domain.ChatInteractor
+import dev.kamikaze.yandexgpttest.ui.theme.ChatScreen
 import dev.kamikaze.yandexgpttest.ui.theme.YandexGptTestTheme
 
 class MainActivity : ComponentActivity() {
@@ -17,7 +20,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            val viewModel = ChatViewModel()
+            val yandexApi = YandexApi
+            val chatInteractor = ChatInteractor(yandexApi)
+            val viewModel = ChatViewModel(chatInteractor)
             YandexGptTestTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     ChatScreen(

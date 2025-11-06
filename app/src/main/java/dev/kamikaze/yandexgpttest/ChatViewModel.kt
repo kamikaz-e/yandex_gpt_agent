@@ -2,59 +2,18 @@ package dev.kamikaze.yandexgpttest
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.kamikaze.yandexgpttest.data.UserMessage
-import dev.kamikaze.yandexgpttest.utils.parseCSV
-import dev.kamikaze.yandexgpttest.utils.parseJSON
-import dev.kamikaze.yandexgpttest.utils.parseMarkdown
-import dev.kamikaze.yandexgpttest.utils.parseXML
+import dev.kamikaze.yandexgpttest.data.ParsedResponse
+import dev.kamikaze.yandexgpttest.domain.ChatInteractor
+import dev.kamikaze.yandexgpttest.ui.AISettings
+import dev.kamikaze.yandexgpttest.ui.UserMessage
+import dev.kamikaze.yandexgpttest.ui.theme.isValidJson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-data class AISettings(
-    val responseFormat: ResponseFormat = ResponseFormat.JSON,
-    val responseStyle: ResponseStyle = ResponseStyle.NEUTRAL,
-    val maxLength: Float = 500F,
-)
-
-enum class ResponseFormat(val displayName: String) {
-    JSON("JSON") {
-        override fun parse(text: String) = parseJSON(text)
-    },
-    MARKDOWN("Markdown") {
-        override fun parse(text: String) = parseMarkdown(text)
-    },
-    CSV("CSV") {
-        override fun parse(text: String) = parseCSV(text)
-    },
-    XML("XML") {
-        override fun parse(text: String) = parseXML(text)
-    };
-
-    abstract fun parse(text: String): ParsedResponse?
-}
-
-enum class ResponseStyle(val displayName: String) {
-    FORMAL("Формальный"),
-    INFORMAL("Неформальный"),
-    NEUTRAL("Нейтральный"),
-    CREATIVE("Креативный"),
-    TECHNICAL("Технический")
-}
-
-@Serializable
-data class ParsedResponse(
-    val summary: String = "",
-    val explanation: String = "",
-    val code: String = "",
-    val references: List<String> = emptyList(),
-    val metadata: Map<String, String> = emptyMap(),
-)
-
-class ChatViewModel : ViewModel() {
+class ChatViewModel(private val chatInteractor: ChatInteractor) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<UserMessage>>(emptyList())
     val messages: StateFlow<List<UserMessage>> = _messages.asStateFlow()
@@ -98,7 +57,7 @@ class ChatViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val response = YandexApi.sendMessage(text, _settings.value)
+                val response = chatInteractor.sendMessage(text, _settings.value)
                 val botMessage = UserMessage(
                     text = truncateText(response),
                     isUser = false,
