@@ -12,7 +12,8 @@ fun parseJSON(text: String): ParsedResponse? {
 
         ParsedResponse(
             summary = json["summary"]?.toString()?.trim('"') ?: "",
-            explanation = json["explanation"]?.toString()?.trim('"') ?: "",
+            description = json["description"]?.toString()?.trim('"') ?: "",
+            totalResult = json["totalResult"]?.toString()?.trim('"').toBoolean(),
             references = json["references"]?.let { element ->
                 Json.decodeFromJsonElement<List<String>>(element)
             } ?: emptyList(),
@@ -43,7 +44,7 @@ fun parseMarkdown(text: String): ParsedResponse? {
 
         ParsedResponse(
             summary = summary,
-            explanation = content.trim(),
+            description = content.trim(),
             references = emptyList(),
             metadata = mapOf("category" to category, "title" to title)
         )
@@ -59,7 +60,7 @@ fun parseCSV(text: String): ParsedResponse? {
         if (parts.size >= 2) {
             ParsedResponse(
                 summary = parts.getOrNull(0) ?: "",
-                explanation = parts.getOrNull(1) ?: "",
+                description = parts.getOrNull(1) ?: "",
                 references = emptyList(),
                 metadata = emptyMap()
             )
@@ -73,12 +74,12 @@ fun parseCSV(text: String): ParsedResponse? {
 fun parseXML(text: String): ParsedResponse? {
     return try {
         val summary = """<summary>([^<]+)</summary>""".toRegex().find(text)?.groupValues?.get(1) ?: ""
-        val explanation = """<content>([^<]+)</content>""".toRegex().find(text)?.groupValues?.get(1) ?: ""
+        val description = """<content>([^<]+)</content>""".toRegex().find(text)?.groupValues?.get(1) ?: ""
         val title = """<title>([^<]+)</title>""".toRegex().find(text)?.groupValues?.get(1) ?: ""
 
         ParsedResponse(
             summary = summary,
-            explanation = explanation,
+            description = description,
             references = emptyList(),
             metadata = mapOf("title" to title)
         )

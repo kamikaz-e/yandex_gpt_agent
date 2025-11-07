@@ -25,7 +25,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,12 +44,14 @@ fun SettingsBottomSheet(
 ) {
     var selectedFormat by remember { mutableStateOf(currentSettings.responseFormat) }
     var selectedStyle by remember { mutableStateOf(currentSettings.responseStyle) }
-    var maxLength by remember { mutableFloatStateOf(currentSettings.maxLength) }
+    var maxLength by remember { mutableIntStateOf(currentSettings.maxLength) }
+    var maxQuestions by remember { mutableIntStateOf(currentSettings.maxQuestions) }
 
     fun saveSettings() {
         val newSettings = AISettings(
             responseFormat = selectedFormat,
             responseStyle = selectedStyle,
+            maxQuestions = maxQuestions,
             maxLength = maxLength
         )
         onSettingsChanged(newSettings)
@@ -107,8 +109,17 @@ fun SettingsBottomSheet(
                 saveSettings()
             }
 
-            UltraCompactSlider("Длина: $maxLength", maxLength, 100f..2000f, 18) { length ->
-                maxLength = length
+            UltraCompactSlider(
+                "Ограничение на максимальное количество вопросов для формирования результата: " +
+                        "$maxQuestions", maxQuestions,
+                1f..20f, 9
+            ) { number ->
+                maxQuestions = number
+                saveSettings()
+            }
+
+            UltraCompactSlider("Длина ответа: $maxLength", maxLength, 100f..2000f, 18) { number ->
+                maxLength = number
                 saveSettings()
             }
         }
@@ -182,10 +193,10 @@ fun <T> UltraCompactDropdown(
 @Composable
 fun UltraCompactSlider(
     label: String,
-    value: Float,
+    value: Int,
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int,
-    onValueChanged: (Float) -> Unit,
+    onValueChanged: (Int) -> Unit,
 ) {
     Column {
         Text(
@@ -194,8 +205,8 @@ fun UltraCompactSlider(
             modifier = Modifier.padding(bottom = 4.dp)
         )
         Slider(
-            value = value,
-            onValueChange = onValueChanged,
+            value = value.toFloat(),
+            onValueChange = { onValueChanged.invoke(it.toInt()) },
             valueRange = valueRange,
             steps = steps,
             modifier = Modifier.fillMaxWidth(),

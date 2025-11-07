@@ -1,5 +1,7 @@
 package dev.kamikaze.yandexgpttest.data
 
+import dev.kamikaze.yandexgpttest.data.MessageRequest.CompletionOptions
+import dev.kamikaze.yandexgpttest.data.MessageRequest.Message
 import dev.kamikaze.yandexgpttest.data.prompt.ResponseFormat
 import dev.kamikaze.yandexgpttest.data.prompt.buildSystemPrompt
 import dev.kamikaze.yandexgpttest.ui.AISettings
@@ -35,12 +37,16 @@ object YandexApi {
         }
 
         install(HttpTimeout) {
-            requestTimeoutMillis = 15000
+            requestTimeoutMillis = 12000
         }
     }
 
-    suspend fun sendMessage(message: String, settings: AISettings): String {
-        val systemPrompt = buildSystemPrompt(settings)
+    suspend fun sendMessage(
+        conversationHistory: List<Message>,
+        settings: AISettings,
+        needTotalResult: Boolean
+    ): String {
+        val systemPrompt = buildSystemPrompt(settings, needTotalResult)
 
         return try {
             val response = client.post("https://llm.api.cloud.yandex.net/foundationModels/v1/completion") {
@@ -50,13 +56,15 @@ object YandexApi {
                 setBody(
                     MessageRequest(
                         modelUri = "gpt://$FOLDER_ID/yandexgpt/latest",
-                        completionOptions = MessageRequest.CompletionOptions(
-                            maxTokens = settings.maxLength.toInt()
+                        completionOptions = CompletionOptions(
+                            maxTokens = settings.maxLength
                         ),
                         messages = listOf(
-                            MessageRequest.Message(role = "system", text = systemPrompt),
-                            MessageRequest.Message(role = "user", text = message)
-                        ),
+                            Message(
+                                role = "system",
+                                text = systemPrompt
+                            )
+                        ) + conversationHistory,
                         json_object = settings.responseFormat == ResponseFormat.JSON
                     )
                 )

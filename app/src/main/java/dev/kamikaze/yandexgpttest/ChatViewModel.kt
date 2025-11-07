@@ -1,7 +1,9 @@
 package dev.kamikaze.yandexgpttest
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dev.kamikaze.yandexgpttest.data.MessageRequest
 import dev.kamikaze.yandexgpttest.data.ParsedResponse
 import dev.kamikaze.yandexgpttest.domain.ChatInteractor
 import dev.kamikaze.yandexgpttest.ui.AISettings
@@ -30,6 +32,7 @@ class ChatViewModel(private val chatInteractor: ChatInteractor) : ViewModel() {
     private val _showDeleteDialog = MutableStateFlow(false)
     val showDeleteDialog: StateFlow<Boolean> = _showDeleteDialog.asStateFlow()
 
+    private var userMessageCount = 0
 
     fun toggleSettingsSheet() {
         _showSettingsSheet.value = !_showSettingsSheet.value
@@ -50,14 +53,28 @@ class ChatViewModel(private val chatInteractor: ChatInteractor) : ViewModel() {
             isUser = true,
             id = _messages.value.count()
         )
-
-        // Добавляем сообщение с ограничениями
-        _messages.value = (_messages.value + userMessage).takeLast(maxMessages)
+        _messages.value += userMessage
+        userMessageCount++
 
         viewModelScope.launch {
             _isLoading.value = true
+
             try {
-                val response = chatInteractor.sendMessage(text, _settings.value)
+                val conversationHistory = _messages.value.map { message ->
+                    MessageRequest.Message(
+                        role = if (message.isUser) "user" else "assistant",
+                        text = message.text
+                    )
+                }
+
+                val needTotalResult = userMessageCount > _settings.value.maxQuestions
+                Log.d("mike_t", "userMessageCount: $userMessageCount")
+                Log.d("mike_t", "_settings.value.maxQuestions: ${_settings.value.maxQuestions}")
+                Log.d("mike_t", "conversationHistory: ${conversationHistory}")
+                if (needTotalResult) {
+                    userMessageCount = 0
+                }
+                val response = chatInteractor.sendMessage(conversationHistory, _settings.value, needTotalResult)
                 val botMessage = UserMessage(
                     text = truncateText(response),
                     isUser = false,
@@ -99,6 +116,7 @@ class ChatViewModel(private val chatInteractor: ChatInteractor) : ViewModel() {
     }
 
     private fun clearChat() {
+        userMessageCount = 0
         _messages.value = emptyList()
     }
 

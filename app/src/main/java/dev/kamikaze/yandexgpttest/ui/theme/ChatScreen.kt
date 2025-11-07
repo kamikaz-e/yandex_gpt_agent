@@ -2,10 +2,8 @@ package dev.kamikaze.yandexgpttest.ui.theme
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,8 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Palette
@@ -54,7 +50,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
@@ -361,6 +356,13 @@ fun MessageInput(
 ) {
     var messageText by remember { mutableStateOf("") }
 
+    // НЕМЕДЛЕННО очищаем поле при успешной отправке, без пересоздания
+    LaunchedEffect(isLoading) {
+        if (!isLoading) {
+            messageText = ""
+        }
+    }
+
     Column(
         modifier = modifier.fillMaxWidth()
     ) {
@@ -459,7 +461,6 @@ fun MessageInput(
                     onSend = {
                         if (messageText.isNotBlank()) {
                             onSendMessage(messageText.trim())
-                            messageText = ""
                         }
                     }
                 )
@@ -508,41 +509,20 @@ fun StructuredJsonMessage(
             .fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Заголовок
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 4.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Структурированный ответ",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-
         // Summary секция
         if (parsedResponse.summary.isNotBlank()) {
             JsonSection(
-                title = "📌 Краткое резюме",
+                title = "📌 Краткое резюме задачи",
                 content = parsedResponse.summary,
-                backgroundColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
                 textColor = MaterialTheme.colorScheme.onSurface
             )
         }
 
         // Explanation секция
-        if (parsedResponse.explanation.isNotBlank()) {
+        if (parsedResponse.description.isNotBlank()) {
             JsonSection(
-                title = "📝 Подробное объяснение",
-                content = parsedResponse.explanation,
-                backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                title = if (parsedResponse.totalResult) "📝 Собранная информация" else "📝 Уточняющие вопросы",
+                content = parsedResponse.description,
                 textColor = MaterialTheme.colorScheme.onSurface
             )
         }
@@ -557,7 +537,7 @@ fun StructuredJsonMessage(
 
         // Если все поля пустые - показываем предупреждение
         if (parsedResponse.summary.isBlank() &&
-            parsedResponse.explanation.isBlank() &&
+            parsedResponse.description.isBlank() &&
             parsedResponse.references.isEmpty()
         ) {
             Surface(
@@ -591,16 +571,11 @@ fun StructuredJsonMessage(
 fun JsonSection(
     title: String,
     content: String,
-    backgroundColor: Color,
     textColor: Color,
     modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = backgroundColor
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        modifier = modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(

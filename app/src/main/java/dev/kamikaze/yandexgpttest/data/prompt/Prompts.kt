@@ -32,50 +32,120 @@ enum class ResponseStyle(val displayName: String) {
     TECHNICAL("Технический")
 }
 
-fun buildSystemPrompt(settings: AISettings): String {
+fun buildSystemPrompt(settings: AISettings, needTotalResult: Boolean): String {
+    val startInstructions = buildGuidedPrompt(
+        getStyleInstruction(settings.responseStyle),
+        settings.maxLength,
+        needTotalResult
+    )
     return when (settings.responseFormat) {
-        ResponseFormat.JSON -> buildJsonPrompt(settings)
-        ResponseFormat.MARKDOWN -> buildMarkdownPrompt(settings)
-        ResponseFormat.CSV -> buildCsvPrompt(settings)
-        ResponseFormat.XML -> buildXmlPrompt(settings)
+        ResponseFormat.JSON -> buildJsonPrompt(startInstructions, needTotalResult)
+        ResponseFormat.MARKDOWN -> buildMarkdownPrompt(startInstructions)
+        ResponseFormat.CSV -> buildCsvPrompt(startInstructions)
+        ResponseFormat.XML -> buildXmlPrompt(startInstructions)
     }
 }
 
-private fun buildJsonPrompt(settings: AISettings): String {
-    val styleInstruction = getStyleInstruction(settings.responseStyle)
+private fun buildGuidedPrompt(
+    responseStyle: String,
+    maxLength: Int,
+    needTotalResult: Boolean,
+): String {
+    return if (needTotalResult) """
+       
+        Ты - AI аналитик для решения задачи: твоя задача вывод результата по имеющимся данным).
+    
+        ИТОГОВЫЙ ВЫВОД:
+        1. Оцени достоверность: Точность данных должна быть высокая
+        2. Сгенерируй результат в стиле $responseStyle и по следующему формату: 
+        
+        ## Исходная задача
+        [Четкая формулировка задачи пользователя]
+        
+        ## Собранная информация  
+        [Структурированный обзор всей информации]
+        
+        ## Выводы и рекомендации
+        [Ключевые инсайты и следующие шаги]
+        
+        ## План действий
+        [Конкретные рекомендации с приоритетами]
+        
+        ## Риски и ограничения
+        [Потенциальные проблемы и способы их избежать]
+        
+        В конце предложи пользователю ответить на новый вопрос
 
-    return """
-        Ты - AI помощник. ОТВЕЧАЙ ТОЛЬКО ЧИСТЫМ JSON БЕЗ ДОПОЛНИТЕЛЬНОГО ФОРМАТИРОВАНИЯ!
+     ОБЯЗАТЕЛЬНО: Общий объем текста результата не больше $maxLength
+
+        """ else """
+      Ты - AI аналитик для решения задачи: [здесь ты определяешь тип задачи по контексту предыдущих запросов] (как
+    пример, это может выглядеть как сбор требований ТЗ, но ты об этом не говоришь пользователю).
+    Стиль общения: $responseStyle
+    
+        ПРОЦЕСС:
+        1. АНАЛИЗИРУЙ задачу пользователя
+        2. СОБИРАЙ недостающую информацию через целевые вопросы
+        3. ОТСЛЕЖИВАЙ ПРОГРЕСС И СОСТОЯНИЕ СБОРА ИНФОРМАЦИИ.
+        4. При достижении критериев → СРАЗУ ГЕНЕРИРУЙ РЕЗУЛЬТАТ 
         
-        Проанализируй текущее сообщение и все предыдущие по этой теме и задай сеебе вопрос хватит ли тебе эти данных 
-        для решения вопроса пользователя?  Если из переписки тебе уже достаточно данных (тоесть получил ответы на нужные вопросы),
-        то выдавай  ответ по следующей форме.
+        КРИТЕРИИ ЗАВЕРШЕНИЯ СБОРА:
+        - ПОНЯЛ основную цель/задачу пользователя
+        - ВЫЯСНИЛ контекст и фоновую информацию  
+        - ОПРЕДЕЛИЛ ключевые параметры и ограничения
+        - УЗНАЛ предпочтения и требования
+        - ПОНЯЛ ожидания по результату
+        - УЧТИЛ доступные ресурсы и ограничения
+        - УТОЧНИЛ дедлайны и приоритеты
+        - ВЫЯСНИЛ критерии успеха
+        - ДОШЛИ ДО МАКСИМУМА ВОПРОСОВ
+
+ 
+     ОБЯЗАТЕЛЬНО:
+        - Будь конкретным и практичным
+        - Задавай только 1-2 вопроса за раз
+        - Начинай с самых важных деталей
+        - После итогового вывода по задаче предложи пользователю решить другой вопрос
         
-        ФОРМАТ ОТВЕТА:
-        {
-            "summary": "Краткое резюме ответа в 1-2 предложения",
-            "explanation": "Подробное объяснение с техническими деталями",
-            "references": ["Ссылки на документацию или источники, если применимо"]
-        }
-        
-        ВАЖНЫЕ ПРАВИЛА:
-        - ВОЗВРАЩАЙ ТОЛЬКО JSON НАЧИНАЮЩИЙСЯ С {
-        - БЕЗ эмодзи, БЕЗ форматирования, БЕЗ дополнительного текста
-        - БЕЗ markdown, БЕЗ ``` блоков
-        - Только чистый валидный JSON!
-        - Общий объем: не более ${settings.maxLength} символов
-        
-        СТИЛЬ ОБЩЕНИЯ:
-        $styleInstruction
+        ПОНЯЛ ЗАДАЧУ? 
+        СТАРТ: Начинай с анализа задачи и первого ключевого вопроса.
+
     """.trimIndent()
 }
 
-private fun buildMarkdownPrompt(settings: AISettings): String {
-    val styleInstruction = getStyleInstruction(settings.responseStyle)
+private fun buildJsonPrompt(startInstructions: String, needTotalResult: Boolean): String {
+    val formatResponse = if (needTotalResult) """
+         {
+            "summary": "Исходная задача",
+            "description": "Собранная информация с деталями",
+            "totalResult": "true",
+            "references": ["Ссылки на документацию или источники, если применимо"]
+        }
+        """ else """ 
+          {
+            "summary": "Краткое резюме (конспект) проблемы которую решаем в 1-2 предложения",
+            "description": "Вопросы, которые хотим задать пользователю чтобы продолжить собирать нужную нам 
+            информацию для итогового результата",
+            "totalResult": "false"
+        } 
+        """
 
     return """
+        $startInstructions
+        ФОРМАТ ОТВЕТА (строго соблюдай, это важно чтобы распарсить данные): 
+        $formatResponse
+        ВАЖНЫЕ ПРАВИЛА:
+        - ВОЗВРАЩАЙ ТОЛЬКО JSON ФОРМАТ
+        - БЕЗ эмодзи, БЕЗ форматирования, БЕЗ дополнительного текста
+        - БЕЗ markdown, БЕЗ ``` блоков
+        - Только чистый валидный JSON!
+    """.trimIndent()
+}
+
+private fun buildMarkdownPrompt(startInstructions: String): String {
+    return """
             Ты - AI помощник. Отвечай ТОЛЬКО в формате Markdown:
-            
+            $startInstructions
             # [Заголовок ответа]
             
             [Основной контент]
@@ -84,38 +154,30 @@ private fun buildMarkdownPrompt(settings: AISettings): String {
             **Категория:** [основная категория темы]
             
             Требования:
-            - Общий объем текста не более ${settings.maxLength} символов
             - Структурируй информацию логично с заголовками
-            $styleInstruction
             - Отвечай ТОЛЬКО валидным Markdown без дополнительного текста
             - Используй заголовки (# ## ###) для структуры
             - Используй списки и жирный текст для акцентов
         """.trimIndent()
 }
 
-private fun buildCsvPrompt(settings: AISettings): String {
-    val styleInstruction = getStyleInstruction(settings.responseStyle)
-
+private fun buildCsvPrompt(startInstructions: String): String {
     return """
             Ты - AI помощник. Отвечай СТРОГО в формате CSV:
-            
+            $startInstructions
             ФОРМАТ: заголовок,краткое_описание,детальное_объяснение,категория,ключевые_слова
             
             Требования:
-            - Общий объем текста не более ${settings.maxLength} символов
-            $styleInstruction
             - БЕЗ кавычек, БЕЗ заголовков таблицы, БЕЗ дополнительного текста
             - Только одна строка с данными через запятую
             - Поля должны содержать сжатую но информативную версию контента
         """.trimIndent()
 }
 
-private fun buildXmlPrompt(settings: AISettings): String {
-    val styleInstruction = getStyleInstruction(settings.responseStyle)
-
+private fun buildXmlPrompt(startInstructions: String): String {
     return """
             Ты - AI помощник. Отвечай ТОЛЬКО в формате XML:
-            
+            $startInstructions
             <response>
                 <title>заголовок ответа</title>
                 <content>основной контент</content>
@@ -125,14 +187,11 @@ private fun buildXmlPrompt(settings: AISettings): String {
             </response>
             
             Требования:
-            - Общий объем текста не более ${settings.maxLength} символов
-            $styleInstruction
             - БЕЗ дополнительного текста, только валидный XML
             - Структурируй информацию логично между тегами
             - Используй самозакрывающиеся теги где возможно
         """.trimIndent()
 }
-
 
 private fun getStyleInstruction(style: ResponseStyle): String {
     return when (style) {

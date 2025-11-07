@@ -59,7 +59,8 @@ data class MessageResponse(
 @Serializable
 data class ParsedResponse(
     val summary: String = "",
-    val explanation: String = "",
+    val description: String = "",
+    val totalResult: Boolean = false,
     val references: List<String> = emptyList(),
     val metadata: Map<String, String> = emptyMap(),
 )
