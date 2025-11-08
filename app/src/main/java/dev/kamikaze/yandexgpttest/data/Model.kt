@@ -7,13 +7,11 @@ data class MessageRequest(
     val modelUri: String,
     val completionOptions: CompletionOptions,
     val messages: List<Message>,
-    val json_object: Boolean,
 ) {
     @Serializable
     data class CompletionOptions(
         val stream: Boolean = false,
         val temperature: Float = 0.3f,
-        val maxTokens: Int = 500,
     )
 
     @Serializable
@@ -28,7 +26,7 @@ data class MessageResponse(
     val result: Result? = null,
     val error: ErrorInfo? = null,
     val code: Int? = null,
-    val message: String? = null
+    val message: String? = null,
 ) {
     @Serializable
     data class Result(
@@ -49,18 +47,7 @@ data class MessageResponse(
 
     @Serializable
     data class ErrorInfo(
-        val code: String,
-        val message: String,
-        val details: String? = null,
+        val code: String? = null,
+        val message: String? = null,
     )
 }
-
-
-@Serializable
-data class ParsedResponse(
-    val summary: String = "",
-    val description: String = "",
-    val totalResult: Boolean = false,
-    val references: List<String> = emptyList(),
-    val metadata: Map<String, String> = emptyMap(),
-)

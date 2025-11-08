@@ -1,66 +1,81 @@
 package dev.kamikaze.yandexgpttest.domain
 
+import dev.kamikaze.yandexgpttest.data.ExpertAgentResponse
 import dev.kamikaze.yandexgpttest.data.MessageRequest
-import dev.kamikaze.yandexgpttest.data.ParsedResponse
 import dev.kamikaze.yandexgpttest.data.YandexApi
-import dev.kamikaze.yandexgpttest.data.prompt.ResponseFormat
-import dev.kamikaze.yandexgpttest.ui.AISettings
-import kotlinx.serialization.json.Json
+import dev.kamikaze.yandexgpttest.data.prompt.AgentType
+import dev.kamikaze.yandexgpttest.data.prompt.parseExpertResponses
 
 class ChatInteractor(private val api: YandexApi) {
 
+    // Отправляем запрос к обоим агентам
     suspend fun sendMessage(
+        userMessage: String,
         conversationHistory: List<MessageRequest.Message>,
-        settings: AISettings,
-        needTotalResult: Boolean,
     ): String {
-        val responseText = api.sendMessage(conversationHistory, settings, needTotalResult)
-        return settings.responseFormat.parse(responseText)?.let { parsed ->
-            formatParsedResponse(parsed, settings.responseFormat)
-        } ?: responseText
+        val results = mutableListOf<ExpertAgentResponse>()
+        // Запрос к yandexgpt/rc
+        results.add(
+            api.sendMessages(
+                userMessage = userMessage,
+                conversationHistory = conversationHistory,
+                agentType = AgentType.YANDEXGPT_RC
+            )
+        )
+        // Запрос к yandexgpt/latest
+        results.add(
+            api.sendMessages(
+                agentType = AgentType.YANDEXGPT_LATEST,
+                userMessage = userMessage,
+                conversationHistory = conversationHistory
+            )
+        )
+        return formatExpertAgentResponses(results)
     }
 
-    private fun formatParsedResponse(parsed: ParsedResponse, format: ResponseFormat): String {
-        return when (format) {
-            ResponseFormat.JSON -> {
-                if (parsed.summary.isNotEmpty() || parsed.description.isNotEmpty()) {
-                    Json.encodeToString(parsed)
-                } else {
-                    parsed.description.ifEmpty { "Контент в формате ${format.displayName}" }
-                }
-            }
+    private fun formatExpertAgentResponses(expertResponses: List<ExpertAgentResponse>): String {
+        return buildString {
+            expertResponses.forEachIndexed { index, agentResponse ->
+                val experts = parseExpertResponses(agentResponse.response)
 
-            ResponseFormat.MARKDOWN -> {
-                // Если есть парсинг Markdown, используем его, иначе возвращаем как есть
-                parsed.description.ifEmpty { "Контент в формате ${format.displayName}" }
-            }
+                if (experts.isNotEmpty()) {
+                    appendLine("🤖 ${agentResponse.agentType.displayName}")
+                    appendLine()
 
-            ResponseFormat.CSV -> {
-                // Показываем CSV в читаемом виде
-                if (parsed.summary.isNotEmpty() || parsed.description.isNotEmpty()) {
-                    """
-                    📊 **(${format.displayName}):**
-                    
-                    **📋 Заголовок:** ${parsed.summary}
-                    **📝 Контент:** ${parsed.description}
-                    **🏷️ Категория:** ${parsed.metadata["category"] ?: "не указана"}
-                    """.trimIndent()
-                } else {
-                    parsed.description.ifEmpty { "Данные в формате ${format.displayName}" }
-                }
-            }
+                    experts.forEachIndexed { expertIndex, expert ->
+                        val expertNumber = expertIndex + 1
+                        appendLine("Эксперт $expertNumber: ${expert.expertName}")
+                        appendLine()
 
-            ResponseFormat.XML -> {
-                if (parsed.summary.isNotEmpty() || parsed.description.isNotEmpty()) {
-                    """
-                    🏗️ **XML структура (${format.displayName}):**
-                    
-                    **📋 Заголовок:** ${parsed.metadata["title"] ?: parsed.summary}
-                    **📝 Контент:** ${parsed.description}
-                    **📄 Кратко:** ${parsed.summary}
-                    """.trimIndent()
+                        if (expert.directAnswer.isNotBlank()) {
+                            appendLine("📋 Прямой ответ:")
+                            appendLine(expert.directAnswer)
+                            appendLine()
+                        }
+
+                        if (expert.stepByStepSolution.isNotBlank()) {
+                            appendLine("🔍 Пошаговое решение:")
+                            appendLine(expert.stepByStepSolution)
+                            appendLine()
+                        }
+
+                        if (expert.crossModelAnswer.isNotBlank()) {
+                            appendLine("🌐 Ответ на cross-модель промпт:")
+                            appendLine(expert.crossModelAnswer)
+                        }
+                        if (expertIndex == experts.lastIndex && expertResponses.lastIndex == index) return@buildString
+                        appendLine()
+                        appendLine("---")
+                        appendLine()
+                    }
                 } else {
-                    parsed.description.ifEmpty { "Структура в формате ${format.displayName}" }
+                    // Если не удалось распарсить экспертов, выводим сырой ответ
+                    appendLine()
+                    appendLine("🤖 ${agentResponse.agentType.displayName}")
+                    appendLine()
+                    appendLine(agentResponse.response)
+                    appendLine()
+                    appendLine("---")
                 }
             }
         }

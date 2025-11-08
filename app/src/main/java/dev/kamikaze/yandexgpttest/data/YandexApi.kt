@@ -2,9 +2,8 @@ package dev.kamikaze.yandexgpttest.data
 
 import dev.kamikaze.yandexgpttest.data.MessageRequest.CompletionOptions
 import dev.kamikaze.yandexgpttest.data.MessageRequest.Message
-import dev.kamikaze.yandexgpttest.data.prompt.ResponseFormat
-import dev.kamikaze.yandexgpttest.data.prompt.buildSystemPrompt
-import dev.kamikaze.yandexgpttest.ui.AISettings
+import dev.kamikaze.yandexgpttest.data.prompt.AgentType
+import dev.kamikaze.yandexgpttest.data.prompt.buildExpertSystemPrompt
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.android.Android
@@ -37,16 +36,28 @@ object YandexApi {
         }
 
         install(HttpTimeout) {
-            requestTimeoutMillis = 12000
+            requestTimeoutMillis = 20000
         }
     }
 
-    suspend fun sendMessage(
+    suspend fun sendMessages(
+        userMessage: String,
         conversationHistory: List<Message>,
-        settings: AISettings,
-        needTotalResult: Boolean
-    ): String {
-        val systemPrompt = buildSystemPrompt(settings, needTotalResult)
+        agentType: AgentType,
+    ): ExpertAgentResponse {
+        return sendMessageToAgent(
+            agentType = agentType,
+            userMessage = userMessage,
+            conversationHistory = conversationHistory
+        )
+    }
+
+    private suspend fun sendMessageToAgent(
+        agentType: AgentType,
+        userMessage: String,
+        conversationHistory: List<Message>,
+    ): ExpertAgentResponse {
+        val systemPrompt = buildExpertSystemPrompt(agentType)
 
         return try {
             val response = client.post("https://llm.api.cloud.yandex.net/foundationModels/v1/completion") {
@@ -55,30 +66,45 @@ object YandexApi {
                 contentType(ContentType.Application.Json)
                 setBody(
                     MessageRequest(
-                        modelUri = "gpt://$FOLDER_ID/yandexgpt/latest",
-                        completionOptions = CompletionOptions(
-                            maxTokens = settings.maxLength
-                        ),
+                        modelUri = when (agentType) {
+                            AgentType.YANDEXGPT_RC -> "gpt://$FOLDER_ID/yandexgpt/rc"
+                            AgentType.YANDEXGPT_LATEST -> "gpt://$FOLDER_ID/yandexgpt/latest"
+                        },
+                        completionOptions = CompletionOptions(),
                         messages = listOf(
                             Message(
                                 role = "system",
                                 text = systemPrompt
+                            ),
+                            Message(
+                                role = "user",
+                                text = userMessage
                             )
-                        ) + conversationHistory,
-                        json_object = settings.responseFormat == ResponseFormat.JSON
+                        ) + conversationHistory
                     )
                 )
             }
 
-            response.body<MessageResponse>()
-                .result
-                ?.alternatives
-                ?.firstOrNull()
-                ?.message?.text
-                ?: "Нет ответа"
+            val messageResponse = response.body<MessageResponse>()
+            val result = messageResponse.result?.alternatives?.firstOrNull()?.message?.text
+                ?: "Нет ответа от агента"
+
+            ExpertAgentResponse(
+                agentType = agentType,
+                response = result
+            )
 
         } catch (e: Exception) {
-            "Ошибка: ${e.message}"
+            ExpertAgentResponse(
+                agentType = agentType,
+                response = "Ошибка: ${e.message}"
+            )
         }
     }
 }
+
+// Добавляем новые data classes
+data class ExpertAgentResponse(
+    val agentType: AgentType,
+    val response: String,
+)
