@@ -57,7 +57,7 @@ class ChatViewModel(private val chatInteractor: ChatInteractor) : ViewModel() {
                 // Обработка ошибки
                 val errorMessage = UserMessage(
                     id = _messages.value.count(),
-                    text = "Ошибка при обработке запроса: ${e.message}",
+                    text = "Ошибка при анализе: ${e.message}",
                     isUser = false
                 )
                 _messages.value += errorMessage
