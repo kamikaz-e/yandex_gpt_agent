@@ -31,6 +31,8 @@ data class MessageResponse(
     @Serializable
     data class Result(
         val alternatives: List<Alternative> = emptyList(),
+        val usage: Usage? = null,  // ← ДОБАВЛЯЕМ информацию о токенах
+        val modelVersion: String? = null
     )
 
     @Serializable
@@ -44,6 +46,13 @@ data class MessageResponse(
             val text: String,
         )
     }
+
+    @Serializable
+    data class Usage(
+        val inputTextTokens: String? = null,
+        val completionTokens: String? = null,
+        val totalTokens: String? = null
+    )
 
     @Serializable
     data class ErrorInfo(

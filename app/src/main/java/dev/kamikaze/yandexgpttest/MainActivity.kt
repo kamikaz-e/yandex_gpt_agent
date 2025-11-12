@@ -1,5 +1,6 @@
 package dev.kamikaze.yandexgpttest
 
+import ChatScreen
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,7 +11,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import dev.kamikaze.yandexgpttest.data.YandexApi
 import dev.kamikaze.yandexgpttest.domain.ChatInteractor
-import dev.kamikaze.yandexgpttest.ui.theme.ChatScreen
 import dev.kamikaze.yandexgpttest.ui.theme.YandexGptTestTheme
 
 class MainActivity : ComponentActivity() {
