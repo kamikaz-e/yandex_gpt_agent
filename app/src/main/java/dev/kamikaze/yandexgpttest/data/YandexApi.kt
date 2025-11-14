@@ -38,6 +38,57 @@ object YandexApi {
         }
     }
 
+    suspend fun createSummary(
+        messages: List<Message>
+    ): ApiResponse {
+        val summaryPrompt = """
+        Создай краткое резюме следующего диалога, сохраняя ключевые факты, вопросы и ответы.
+        Структура резюме:
+        - Основные темы обсуждения
+        - Ключевые вопросы пользователя
+        - Важные факты и выводы
+        - Контекст для продолжения разговора
+        
+        ВАЖНО: Резюме должно быть максимально компактным, но содержать всю критическую информацию для продолжения диалога.
+        
+        Диалог для анализа:
+        ${messages.joinToString("\n") { "${it.role}: ${it.text}" }}
+    """.trimIndent()
+
+        return try {
+            val response = client.post("https://llm.api.cloud.yandex.net/foundationModels/v1/completion") {
+                header("Authorization", "Api-Key $API_KEY")
+                header("x-folder-id", FOLDER_ID)
+                contentType(ContentType.Application.Json)
+                setBody(
+                    MessageRequest(
+                        modelUri = "gpt://$FOLDER_ID/yandexgpt/latest",
+                        completionOptions = CompletionOptions(
+                            temperature = 0.3f
+                        ),
+                        messages = listOf(
+                            Message(role = "system", text = "Ты - эксперт по созданию кратких, но информативных резюме диалогов."),
+                            Message(role = "user", text = summaryPrompt)
+                        )
+                    )
+                )
+            }
+
+            val messageResponse = response.body<MessageResponse>()
+            val text = messageResponse.result?.alternatives?.firstOrNull()?.message?.text
+                ?: "Не удалось создать резюме"
+            val tokens = TokenStats.fromUsage(messageResponse.result?.usage)
+
+            ApiResponse(text = text, tokens = tokens)
+
+        } catch (e: Exception) {
+            ApiResponse(
+                text = "Ошибка создания резюме: ${e.message}",
+                tokens = TokenStats()
+            )
+        }
+    }
+
     suspend fun sendMessage(
         userMessage: String,
         conversationHistory: List<Message> = emptyList(),

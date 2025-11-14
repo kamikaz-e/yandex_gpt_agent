@@ -42,8 +42,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.kamikaze.yandexgpttest.ChatViewModel
+import dev.kamikaze.yandexgpttest.data.CompactionStats
 import dev.kamikaze.yandexgpttest.ui.UserMessage
 import dev.kamikaze.yandexgpttest.ui.utils.DeleteConfirmationDialog
+import kotlin.collections.isNotEmpty
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,6 +57,8 @@ fun ChatScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val showDeleteDialog by viewModel.showDeleteDialog.collectAsState()
     val totalTokenStats by viewModel.totalTokenStats.collectAsState()  // ← Добавляем
+    val compactionConfig by viewModel.compactionConfig.collectAsState()
+    val compactionStats by viewModel.compactionStats.collectAsState()
 
     val lazyListState = rememberLazyListState()
 
@@ -106,6 +110,13 @@ fun ChatScreen(
                         totalTokens = totalTokenStats.totalTokens
                     )
                 }
+                Spacer(modifier = Modifier.height(8.dp))
+                CompactionToggleCard(
+                    compactionEnabled = compactionConfig.enabled,
+                    compactionStats = compactionStats,
+                    messagesCount = messages.count { !it.isSummary },
+                    onToggleCompaction = { viewModel.toggleCompaction() }
+                )
             }
         }
 
@@ -282,12 +293,17 @@ fun RegularChatMessageItem(
         }
     }
 }
-
 @Composable
 fun AIDisplayMessage(
     userMessage: UserMessage,
     modifier: Modifier = Modifier,
 ) {
+    // ← Не показываем summary если компрессия выключена
+    if (userMessage.isSummary) {
+        // Summary-сообщения видны только в режиме компрессии
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -311,7 +327,6 @@ fun AIDisplayMessage(
                     modifier = Modifier.padding(16.dp)
                 )
 
-                // Показываем токены для AI сообщений
                 userMessage.tokens?.let { tokens ->
                     if (tokens.totalTokens > 0) {
                         Surface(
@@ -455,5 +470,356 @@ fun MessageInput(
                 )
             }
         }
+    }
+}
+
+// Добавьте в ChatScreen.kt
+
+@Composable
+fun CompactionStatisticsCard(
+    compactionStats: CompactionStats,
+    compactionEnabled: Boolean,
+    onToggleCompaction: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = if (compactionEnabled)
+            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
+        else
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        border = BorderStroke(
+            1.dp,
+            if (compactionEnabled)
+                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f)
+            else
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🗜️ Компрессия",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (compactionEnabled)
+                            MaterialTheme.colorScheme.tertiary
+                        else
+                            MaterialTheme.colorScheme.outline
+                    ) {
+                        Text(
+                            text = if (compactionEnabled) "ON" else "OFF",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                androidx.compose.material3.Switch(
+                    checked = compactionEnabled,
+                    onCheckedChange = { onToggleCompaction() }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                CompactionStatItem(
+                    label = "Сжато",
+                    value = "${compactionStats.originalMessages} → ${compactionStats.compressedMessages}",
+                    modifier = Modifier.weight(1f)
+                )
+                CompactionStatItem(
+                    label = "Экономия",
+                    value = "${compactionStats.tokensSaved} 🪙",
+                    modifier = Modifier.weight(1f),
+                    highlight = true
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CompactionStatItem(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    highlight: Boolean = false
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = if (highlight) FontWeight.Bold else FontWeight.Medium,
+            color = if (highlight)
+                MaterialTheme.colorScheme.tertiary
+            else
+                MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+fun CompactionToggleCard(
+    compactionEnabled: Boolean,
+    compactionStats: CompactionStats,
+    messagesCount: Int,
+    onToggleCompaction: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = if (compactionEnabled)
+            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+        else
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        border = BorderStroke(
+            width = if (compactionEnabled) 2.dp else 1.dp,
+            color = if (compactionEnabled)
+                MaterialTheme.colorScheme.tertiary
+            else
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Заголовок с переключателем
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🗜️",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "Компрессия диалога",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Text(
+                        text = if (compactionEnabled)
+                            "Каждые 10 сообщений → Summary"
+                        else
+                            "Все сообщения сохраняются",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.End
+                ) {
+                    androidx.compose.material3.Switch(
+                        checked = compactionEnabled,
+                        onCheckedChange = { onToggleCompaction() },
+                        colors = androidx.compose.material3.SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.tertiary,
+                            checkedTrackColor = MaterialTheme.colorScheme.tertiaryContainer
+                        )
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (compactionEnabled)
+                            MaterialTheme.colorScheme.tertiary
+                        else
+                            MaterialTheme.colorScheme.outline
+                    ) {
+                        Text(
+                            text = if (compactionEnabled) "ВКЛЮЧЕНО" else "ВЫКЛЮЧЕНО",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+
+            // Статистика (показываем только если есть данные)
+            if (compactionEnabled && (compactionStats.originalMessages > 0 || messagesCount > 0)) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                androidx.compose.material3.Divider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    // Текущие сообщения
+                    CompactionStatItem(
+                        label = "Сообщений",
+                        value = "$messagesCount",
+                        modifier = Modifier.weight(1f),
+                        icon = "💬"
+                    )
+
+                    // Сжато сообщений
+                    CompactionStatItem(
+                        label = "Сжато",
+                        value = "${compactionStats.originalMessages} → ${compactionStats.compressedMessages}",
+                        modifier = Modifier.weight(1f),
+                        icon = "📦"
+                    )
+
+                    // Экономия токенов
+                    CompactionStatItem(
+                        label = "Экономия",
+                        value = "${compactionStats.tokensSaved}",
+                        modifier = Modifier.weight(1f),
+                        highlight = true,
+                        icon = "💰"
+                    )
+                }
+
+                // Предупреждение о компрессии
+                if (messagesCount >= 8 && messagesCount < 10) {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "⚡",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = "Компрессия через ${10 - messagesCount} сообщений",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Подсказка когда выключено
+            if (!compactionEnabled && messagesCount > 10) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "⚠️",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Column {
+                            Text(
+                                text = "Большой контекст: $messagesCount сообщений",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = "Включите компрессию для экономии токенов",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CompactionStatItem(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    highlight: Boolean = false,
+    icon: String = ""
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (icon.isNotEmpty()) {
+            Text(
+                text = icon,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = if (highlight) FontWeight.Bold else FontWeight.Medium,
+            color = if (highlight)
+                MaterialTheme.colorScheme.tertiary
+            else
+                MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
