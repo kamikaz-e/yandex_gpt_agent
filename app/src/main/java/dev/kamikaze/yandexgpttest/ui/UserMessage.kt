@@ -1,7 +1,9 @@
 package dev.kamikaze.yandexgpttest.ui
 
 import dev.kamikaze.yandexgpttest.data.TokenStats
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class UserMessage(
     val id: Int,
     val text: String,

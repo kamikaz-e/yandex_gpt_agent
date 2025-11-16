@@ -1,5 +1,8 @@
 package dev.kamikaze.yandexgpttest.data
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 data class TokenStats(
     val inputTokens: Int = 0,
     val outputTokens: Int = 0,
