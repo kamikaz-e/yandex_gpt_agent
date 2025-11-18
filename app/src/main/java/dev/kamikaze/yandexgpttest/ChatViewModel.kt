@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.kamikaze.yandexgpttest.data.*
 import dev.kamikaze.yandexgpttest.domain.ChatInteractor
+import dev.kamikaze.yandexgpttest.mcp.McpClient
+import dev.kamikaze.yandexgpttest.mcp.McpResult
+import dev.kamikaze.yandexgpttest.mcp.Tool
 import dev.kamikaze.yandexgpttest.ui.UserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +55,20 @@ class ChatViewModel(
 
     private val _isLoadingFromMemory = MutableStateFlow(false)
     val isLoadingFromMemory: StateFlow<Boolean> = _isLoadingFromMemory.asStateFlow()
+
+    private val _mcpTools = MutableStateFlow<List<Tool>>(emptyList())
+    val mcpTools: StateFlow<List<Tool>> = _mcpTools.asStateFlow()
+
+    private val _isLoadingMcpTools = MutableStateFlow(false)
+    val isLoadingMcpTools: StateFlow<Boolean> = _isLoadingMcpTools.asStateFlow()
+
+    private val _mcpStatus = MutableStateFlow("Не подключен")
+    val mcpStatus: StateFlow<String> = _mcpStatus.asStateFlow()
+
+    private val _showMcpToolsDialog = MutableStateFlow(false)
+    val showMcpToolsDialog: StateFlow<Boolean> = _showMcpToolsDialog.asStateFlow()
+
+    private val mcpClient = McpClient()
 
     init {
         // При инициализации пытаемся загрузить сохраненные данные
@@ -109,6 +126,60 @@ class ChatViewModel(
         }
     }
 
+    fun loadMcpTools() {
+        viewModelScope.launch {
+            _isLoadingMcpTools.value = true
+            _mcpStatus.value = "Подключение..."
+
+            try {
+                val pingResult = mcpClient.ping()
+                if (pingResult is McpResult.Error) {
+                    _mcpStatus.value = "Сервер недоступен"
+                    _mcpTools.value = emptyList()
+                    return@launch
+                }
+
+                when (val toolsResult = mcpClient.listTools()) {
+                    is McpResult.Success<*> -> {
+                        val tools = toolsResult.data as? List<Tool> ?: emptyList()
+                        _mcpTools.value = tools
+                        _mcpStatus.value = if (tools.isEmpty()) {
+                            "Подключен (нет инструментов)"
+                        } else {
+                            "Подключен (${tools.size} инструментов)"
+                        }
+                        if (tools.isNotEmpty()) {
+                            _showMcpToolsDialog.value = true
+                        }
+                    }
+
+                    is McpResult.Error -> {
+                        _mcpStatus.value = "Ошибка: ${toolsResult.message}"
+                        _mcpTools.value = emptyList()
+                    }
+                }
+            } catch (e: Exception) {
+                _mcpStatus.value = "Ошибка подключения: ${e.message}"
+                _mcpTools.value = emptyList()
+            } finally {
+                _isLoadingMcpTools.value = false
+            }
+        }
+    }
+
+    fun showMcpToolsDialog() {
+        _showMcpToolsDialog.value = true
+    }
+
+    fun hideMcpToolsDialog() {
+        _showMcpToolsDialog.value = false
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        mcpClient.close()
+    }
+
     private fun buildConversationHistory(): List<MessageRequest.Message> {
         val history = mutableListOf<MessageRequest.Message>()
 
@@ -122,6 +193,7 @@ class ChatViewModel(
                         )
                     )
                 }
+
                 message.isUser && !message.isSummary -> {
                     history.add(
                         MessageRequest.Message(
@@ -161,8 +233,10 @@ class ChatViewModel(
 
         if (messagesToCompress.size < _compactionConfig.value.messagesThreshold) return
 
-        val messagesForSummary = messagesToCompress.take(_compactionConfig.value.messagesThreshold)
-        val remainingMessages = messagesToCompress.drop(_compactionConfig.value.messagesThreshold)
+        val messagesForSummary =
+            messagesToCompress.take(_compactionConfig.value.messagesThreshold)
+        val remainingMessages =
+            messagesToCompress.drop(_compactionConfig.value.messagesThreshold)
 
         val tokensBeforeCompression = messagesForSummary
             .mapNotNull { it.tokens?.totalTokens }

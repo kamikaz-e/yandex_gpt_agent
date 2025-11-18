@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.kamikaze.yandexgpttest.ChatViewModel
 import dev.kamikaze.yandexgpttest.data.StorageInfo
+import dev.kamikaze.yandexgpttest.mcp.Tool
 import dev.kamikaze.yandexgpttest.ui.UserMessage
 import dev.kamikaze.yandexgpttest.ui.utils.ClearMemoryConfirmationDialog
 import dev.kamikaze.yandexgpttest.ui.utils.DeleteConfirmationDialog
@@ -47,6 +48,10 @@ fun ChatScreen(
     val hasSavedData by viewModel.hasSavedData.collectAsState()
     val storageInfo by viewModel.storageInfo.collectAsState()
     val isLoadingFromMemory by viewModel.isLoadingFromMemory.collectAsState()
+    val mcpTools by viewModel.mcpTools.collectAsState()
+    val isLoadingMcpTools by viewModel.isLoadingMcpTools.collectAsState()
+    val mcpStatus by viewModel.mcpStatus.collectAsState()
+    val showMcpToolsDialog by viewModel.showMcpToolsDialog.collectAsState()
 
     val lazyListState = rememberLazyListState()
 
@@ -188,8 +193,20 @@ fun ChatScreen(
             isLoading = isLoading,
             onSendMessage = { message ->
                 viewModel.sendMessage(message)
-            }
+            },
+            // ← НОВЫЕ параметры для MCP
+            mcpStatus = mcpStatus,
+            isLoadingMcpTools = isLoadingMcpTools,
+            onLoadMcpTools = { viewModel.loadMcpTools() }
         )
+
+        // Диалог с MCP инструментами
+        if (showMcpToolsDialog) {
+            McpToolsDialog(
+                tools = mcpTools,
+                onDismiss = { viewModel.hideMcpToolsDialog() }
+            )
+        }
     }
 
     // Диалоги
@@ -206,6 +223,157 @@ fun ChatScreen(
             onConfirm = { viewModel.confirmClearMemory() },
             onDismiss = { viewModel.cancelClearMemory() }
         )
+    }
+}
+
+// Добавляем в ChatScreen.kt
+
+@Composable
+fun McpToolsButton(
+    mcpStatus: String,
+    isLoadingMcpTools: Boolean,
+    onLoadMcpTools: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "🔧",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Column {
+                    Text(
+                        text = "MCP Инструменты",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = mcpStatus,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (isLoadingMcpTools) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                androidx.compose.material3.Button(
+                    onClick = onLoadMcpTools,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Text(
+                        text = "Загрузить",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun McpToolsDialog(
+    tools: List<Tool>,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "🔧 MCP Инструменты (${tools.size})",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            LazyColumn {
+                items(tools) { tool ->
+                    McpToolItem(tool = tool)
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                onClick = onDismiss
+            ) {
+                Text("Закрыть")
+            }
+        }
+    )
+}
+
+@Composable
+fun McpToolItem(
+    tool: Tool,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp)
+        ) {
+            Text(
+                text = tool.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            if (!tool.description.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = tool.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Text(
+                    text = "Тип: ${tool.inputSchema.type}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
     }
 }
 
@@ -765,6 +933,10 @@ fun MessageInput(
     modifier: Modifier = Modifier,
     isLoading: Boolean,
     onSendMessage: (String) -> Unit,
+    // ← НОВЫЕ параметры для MCP
+    mcpStatus: String,
+    isLoadingMcpTools: Boolean,
+    onLoadMcpTools: () -> Unit
 ) {
     var messageText by remember { mutableStateOf("") }
 
@@ -777,6 +949,13 @@ fun MessageInput(
     Column(
         modifier = modifier.fillMaxWidth()
     ) {
+        // ← НОВАЯ кнопка MCP над полем ввода
+        McpToolsButton(
+            mcpStatus = mcpStatus,
+            isLoadingMcpTools = isLoadingMcpTools,
+            onLoadMcpTools = onLoadMcpTools
+        )
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
