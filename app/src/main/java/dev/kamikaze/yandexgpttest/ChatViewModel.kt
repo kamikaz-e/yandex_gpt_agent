@@ -4,15 +4,23 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.kamikaze.yandexgpttest.data.*
+import dev.kamikaze.yandexgpttest.data.mcp.McpClient
+import dev.kamikaze.yandexgpttest.data.mcp.McpResult
+import dev.kamikaze.yandexgpttest.data.mcp.Tool
 import dev.kamikaze.yandexgpttest.domain.ChatInteractor
-import dev.kamikaze.yandexgpttest.mcp.McpClient
-import dev.kamikaze.yandexgpttest.mcp.McpResult
-import dev.kamikaze.yandexgpttest.mcp.Tool
 import dev.kamikaze.yandexgpttest.ui.UserMessage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class ChatViewModel(
     private val chatInteractor: ChatInteractor,
@@ -68,6 +76,7 @@ class ChatViewModel(
     private val _showMcpToolsDialog = MutableStateFlow(false)
     val showMcpToolsDialog: StateFlow<Boolean> = _showMcpToolsDialog.asStateFlow()
 
+    private val json by lazy { Json { ignoreUnknownKeys = true; isLenient = true } }
     private val mcpClient = McpClient()
 
     init {
@@ -89,16 +98,19 @@ class ChatViewModel(
                 _messages.value += userMessage
 
                 val conversationHistory = buildConversationHistory()
-
                 val apiResponse = chatInteractor.sendMessage(message, conversationHistory)
 
-                val assistantMessage = UserMessage(
-                    id = _messages.value.count(),
-                    text = apiResponse.text,
-                    isUser = false,
-                    tokens = apiResponse.tokens
-                )
-                _messages.value += assistantMessage
+                val isToolCall = tryHandleToolCall(apiResponse.text)
+                if (!isToolCall) {
+                    // Только если НЕ tool_call - добавляем как обычный ответ
+                    val assistantMessage = UserMessage(
+                        id = _messages.value.count(),
+                        text = apiResponse.text,
+                        isUser = false,
+                        tokens = apiResponse.tokens
+                    )
+                    _messages.value += assistantMessage
+                }
 
                 updateTotalTokens(apiResponse.tokens)
 
@@ -106,7 +118,6 @@ class ChatViewModel(
                     checkAndCompressHistory()
                 }
 
-                // Автоматическое сохранение после каждого изменения
                 saveChatDataToMemory()
 
             } catch (e: Exception) {
@@ -117,8 +128,6 @@ class ChatViewModel(
                     tokens = null
                 )
                 _messages.value += errorMessage
-
-                // Сохраняем даже при ошибке
                 saveChatDataToMemory()
             } finally {
                 _isLoading.value = false
@@ -167,9 +176,6 @@ class ChatViewModel(
         }
     }
 
-    fun showMcpToolsDialog() {
-        _showMcpToolsDialog.value = true
-    }
 
     fun hideMcpToolsDialog() {
         _showMcpToolsDialog.value = false
@@ -179,6 +185,62 @@ class ChatViewModel(
         super.onCleared()
         mcpClient.close()
     }
+
+    private suspend fun tryHandleToolCall(assistantText: String): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val cleanText = assistantText.trim()
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+
+                val root = json.parseToJsonElement(cleanText)
+
+                if (root is JsonObject && root.containsKey("tool_call")) {
+                    val toolCall = root["tool_call"]!!.jsonObject
+                    val name = toolCall["name"]?.jsonPrimitive?.contentOrNull
+                        ?: return@withContext false
+                    val args = toolCall["arguments"]?.jsonObject
+                        ?: JsonObject(emptyMap())
+
+                    // ← Показываем индикатор вызова
+                    val loadingMsg = UserMessage(
+                        id = _messages.value.count(),
+                        text = "🔧 Вызываю инструмент $name...",
+                        isUser = false
+                    )
+                    _messages.value += loadingMsg
+
+                    when (val call = mcpClient.callTool(name, args)) {
+                        is McpResult.Error -> {
+                            _messages.value = _messages.value.dropLast(1)
+
+                            val msg = UserMessage(
+                                id = _messages.value.count(),
+                                text = "❌ Ошибка: ${call.message}",
+                                isUser = false
+                            )
+                            _messages.value += msg
+                        }
+
+                        is McpResult.Success -> {
+                            _messages.value = _messages.value.dropLast(1)
+
+                            // ← НОВОЕ: Парсим результат для красивого отображения
+                            val mcpResultMessage = parseMcpResult(name, call.data.result)
+                            _messages.value += mcpResultMessage
+                        }
+                    }
+
+                    saveChatDataToMemory()
+                    return@withContext true
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            false
+        }
 
     private fun buildConversationHistory(): List<MessageRequest.Message> {
         val history = mutableListOf<MessageRequest.Message>()
@@ -416,5 +478,98 @@ class ChatViewModel(
         DataManager.clearChatData(applicationContext)
         _hasSavedData.value = false
         updateStorageInfo()
+    }
+
+    // ← НОВЫЙ МЕТОД: Парсинг MCP результата
+    private fun parseMcpResult(toolName: String, resultJson: JsonElement): UserMessage {
+        return try {
+            val resultObj = if (resultJson is JsonObject && resultJson.containsKey("result")) {
+                resultJson["result"]!!.jsonObject
+            } else {
+                resultJson.jsonObject
+            }
+
+            // Извлекаем summary если есть
+            val summaryText = resultObj["summary"]?.jsonPrimitive?.contentOrNull
+
+            if (summaryText != null) {
+                // Если есть summary - используем его
+                UserMessage(
+                    id = _messages.value.count(),
+                    text = summaryText,
+                    isUser = false,
+                    isMcpResult = true,
+                    mcpToolName = toolName
+                )
+            } else {
+                // Форматируем JSON как текст
+                val formattedText = formatMcpResult(toolName, resultObj)
+                UserMessage(
+                    id = _messages.value.count(),
+                    text = formattedText,
+                    isUser = false,
+                    isMcpResult = true,
+                    mcpToolName = toolName
+                )
+            }
+        } catch (e: Exception) {
+            // Fallback - показываем как есть
+            UserMessage(
+                id = _messages.value.count(),
+                text = json.encodeToString(JsonElement.serializer(), resultJson),
+                isUser = false
+            )
+        }
+    }
+
+    // ← НОВЫЙ МЕТОД: Форматирование результата
+    private fun formatMcpResult(toolName: String, resultObj: JsonObject): String {
+        return when (toolName) {
+            "github_issue_count" -> {
+                val owner = resultObj["owner"]?.jsonPrimitive?.contentOrNull ?: "?"
+                val repo = resultObj["repo"]?.jsonPrimitive?.contentOrNull ?: "?"
+                val issues = resultObj["open_issues"]?.jsonPrimitive?.contentOrNull ?: "0"
+                """
+            📊 Репозиторий: $owner/$repo
+            🐛 Открытые issues: $issues
+            """.trimIndent()
+            }
+
+            "github_repo_info" -> {
+                val name = resultObj["name"]?.jsonPrimitive?.contentOrNull ?: "?"
+                val desc = resultObj["description"]?.jsonPrimitive?.contentOrNull ?: "Нет описания"
+                val stars = resultObj["stars"]?.jsonPrimitive?.contentOrNull ?: "0"
+                val forks = resultObj["forks"]?.jsonPrimitive?.contentOrNull ?: "0"
+                val language = resultObj["language"]?.jsonPrimitive?.contentOrNull ?: "Не указан"
+                val issues = resultObj["open_issues"]?.jsonPrimitive?.contentOrNull ?: "0"
+
+                """
+            🏆 $name
+            $desc
+            
+            ⭐ Звезды: $stars
+            🍴 Форки: $forks
+            🐛 Issues: $issues
+            💻 Язык: $language
+            """.trimIndent()
+            }
+
+            "github_search_repos" -> {
+                val summary = resultObj["summary"]?.jsonPrimitive?.contentOrNull
+                summary ?: "Результаты поиска получены"
+            }
+
+            "current_time" -> {
+                val formatted = resultObj["formatted"]?.jsonPrimitive?.contentOrNull ?: "?"
+                "🕐 Текущее время: $formatted"
+            }
+
+            else -> {
+                // Для неизвестных инструментов - показываем все поля
+                resultObj.entries.joinToString("\n") { (key, value) ->
+                    "$key: ${value.jsonPrimitive.contentOrNull ?: value}"
+                }
+            }
+        }
     }
 }

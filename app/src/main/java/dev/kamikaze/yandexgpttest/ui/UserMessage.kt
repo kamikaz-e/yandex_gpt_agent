@@ -9,6 +9,8 @@ data class UserMessage(
     val text: String,
     val isUser: Boolean,
     val tokens: TokenStats? = null,
-    val isSummary: Boolean = false,  // ← НОВОЕ: флаг summary
-    val originalMessagesCount: Int = 0  // ← НОВОЕ: сколько сообщений заменяет summary
+    val isSummary: Boolean = false,
+    val originalMessagesCount: Int = 0,
+    val isMcpResult: Boolean = false,  // ← НОВОЕ: флаг MCP результата
+    val mcpToolName: String? = null     // ← НОВОЕ: имя вызванного инструмента
 )

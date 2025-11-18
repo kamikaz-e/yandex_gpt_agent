@@ -20,14 +20,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.SemanticsProperties.ImeAction
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction.Companion.Send
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.kamikaze.yandexgpttest.ChatViewModel
 import dev.kamikaze.yandexgpttest.data.StorageInfo
-import dev.kamikaze.yandexgpttest.mcp.Tool
+import dev.kamikaze.yandexgpttest.data.mcp.Tool
 import dev.kamikaze.yandexgpttest.ui.UserMessage
 import dev.kamikaze.yandexgpttest.ui.utils.ClearMemoryConfirmationDialog
 import dev.kamikaze.yandexgpttest.ui.utils.DeleteConfirmationDialog
@@ -41,13 +41,14 @@ fun ChatScreen(
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val showDeleteDialog by viewModel.showDeleteDialog.collectAsState()
-    val showClearMemoryDialog by viewModel.showClearMemoryDialog.collectAsState() // ← НОВОЕ
+    val showClearMemoryDialog by viewModel.showClearMemoryDialog.collectAsState()
     val totalTokenStats by viewModel.totalTokenStats.collectAsState()
     val compactionConfig by viewModel.compactionConfig.collectAsState()
     val compactionStats by viewModel.compactionStats.collectAsState()
     val hasSavedData by viewModel.hasSavedData.collectAsState()
     val storageInfo by viewModel.storageInfo.collectAsState()
     val isLoadingFromMemory by viewModel.isLoadingFromMemory.collectAsState()
+
     val mcpTools by viewModel.mcpTools.collectAsState()
     val isLoadingMcpTools by viewModel.isLoadingMcpTools.collectAsState()
     val mcpStatus by viewModel.mcpStatus.collectAsState()
@@ -55,9 +56,28 @@ fun ChatScreen(
 
     val lazyListState = rememberLazyListState()
 
+    // ← НОВОЕ: FocusRequester для управления фокусом
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+
+    // ← НОВОЕ: LocalFocusManager для скрытия клавиатуры
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+
     LaunchedEffect(messages.size, isLoading) {
         if (messages.isNotEmpty()) {
             lazyListState.animateScrollToItem(messages.size - 1)
+        }
+
+        // ← НОВОЕ: Устанавливаем фокус после получения ответа
+        if (!isLoading && messages.isNotEmpty()) {
+            kotlinx.coroutines.delay(300) // Небольшая задержка для плавности
+            focusRequester.requestFocus()
+        }
+    }
+
+    // ← НОВОЕ: Скрываем клавиатуру при скролле
+    LaunchedEffect(lazyListState.isScrollInProgress) {
+        if (lazyListState.isScrollInProgress) {
+            focusManager.clearFocus()
         }
     }
 
@@ -86,12 +106,10 @@ fun ChatScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Компактная статистика токенов
                         if (totalTokenStats.totalTokens > 0) {
                             CompactTokenStats(totalTokens = totalTokenStats.totalTokens)
                         }
 
-                        // Кнопка очистки памяти (только если есть данные)
                         if (hasSavedData) {
                             IconButton(
                                 onClick = { viewModel.showClearMemoryDialog() },
@@ -119,7 +137,6 @@ fun ChatScreen(
                     }
                 }
 
-                // Компактный блок настроек
                 CompactSettingsPanel(
                     compactionConfig = compactionConfig,
                     compactionStats = compactionStats,
@@ -132,7 +149,6 @@ fun ChatScreen(
             }
         }
 
-        // Индикатор загрузки из памяти
         AnimatedVisibility(
             visible = isLoadingFromMemory,
             modifier = Modifier.fillMaxWidth()
@@ -175,10 +191,16 @@ fun ChatScreen(
                 items = messages,
                 key = { it.id }
             ) { message ->
-                if (message.isUser) {
-                    RegularChatMessageItem(userMessage = message)
-                } else {
-                    AIDisplayMessage(userMessage = message)
+                when {
+                    message.isUser -> {
+                        RegularChatMessageItem(userMessage = message)
+                    }
+                    message.isMcpResult -> {
+                        McpResultMessage(userMessage = message)
+                    }
+                    else -> {
+                        AIDisplayMessage(userMessage = message)
+                    }
                 }
             }
 
@@ -194,13 +216,12 @@ fun ChatScreen(
             onSendMessage = { message ->
                 viewModel.sendMessage(message)
             },
-            // ← НОВЫЕ параметры для MCP
             mcpStatus = mcpStatus,
             isLoadingMcpTools = isLoadingMcpTools,
-            onLoadMcpTools = { viewModel.loadMcpTools() }
+            onLoadMcpTools = { viewModel.loadMcpTools() },
+            focusRequester = focusRequester
         )
 
-        // Диалог с MCP инструментами
         if (showMcpToolsDialog) {
             McpToolsDialog(
                 tools = mcpTools,
@@ -209,7 +230,6 @@ fun ChatScreen(
         }
     }
 
-    // Диалоги
     if (showDeleteDialog) {
         DeleteConfirmationDialog(
             onConfirm = { viewModel.confirmDeleteChat() },
@@ -226,7 +246,131 @@ fun ChatScreen(
     }
 }
 
-// Добавляем в ChatScreen.kt
+@Composable
+fun McpResultMessage(
+    userMessage: UserMessage,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(0.9f),
+            shape = RoundedCornerShape(
+                topStart = 4.dp,
+                topEnd = 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 16.dp
+            ),
+            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f),
+            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f)),
+            shadowElevation = 2.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                // Заголовок с иконкой инструмента
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                ) {
+                    // Иконка в зависимости от инструмента
+                    val icon = when (userMessage.mcpToolName) {
+                        "github_issue_count" -> "🐛"
+                        "github_repo_info" -> "📦"
+                        "github_search_repos" -> "🔍"
+                        "current_time" -> "🕐"
+                        else -> "🔧"
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.tertiary
+                    ) {
+                        Text(
+                            text = icon,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+
+                    Column {
+                        Text(
+                            text = "MCP Инструмент",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = userMessage.mcpToolName ?: "unknown",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                }
+
+                // Divider
+                androidx.compose.material3.HorizontalDivider(
+                    color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f),
+                    thickness = 1.dp,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+
+                // Основной текст результата
+                Text(
+                    text = userMessage.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = MaterialTheme.typography.bodyMedium.fontSize * 1.5
+                )
+
+                // Токены (если есть)
+                userMessage.tokens?.let { tokens ->
+                    if (tokens.totalTokens > 0) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "📊",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                Text(
+                                    text = "вход: ${tokens.inputTokens}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "выход: ${tokens.outputTokens}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "всего: ${tokens.totalTokens}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.tertiary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun McpToolsButton(
@@ -302,7 +446,7 @@ fun McpToolsDialog(
     tools: List<Tool>,
     onDismiss: () -> Unit
 ) {
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
@@ -933,10 +1077,10 @@ fun MessageInput(
     modifier: Modifier = Modifier,
     isLoading: Boolean,
     onSendMessage: (String) -> Unit,
-    // ← НОВЫЕ параметры для MCP
     mcpStatus: String,
     isLoadingMcpTools: Boolean,
-    onLoadMcpTools: () -> Unit
+    onLoadMcpTools: () -> Unit,
+    focusRequester: androidx.compose.ui.focus.FocusRequester  // ← НОВЫЙ параметр
 ) {
     var messageText by remember { mutableStateOf("") }
 
@@ -949,7 +1093,6 @@ fun MessageInput(
     Column(
         modifier = modifier.fillMaxWidth()
     ) {
-        // ← НОВАЯ кнопка MCP над полем ввода
         McpToolsButton(
             mcpStatus = mcpStatus,
             isLoadingMcpTools = isLoadingMcpTools,
@@ -959,10 +1102,11 @@ fun MessageInput(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
+            // ← ОБНОВЛЕННОЕ TextField с поддержкой 2 строк
             OutlinedTextField(
                 value = messageText,
                 onValueChange = { messageText = it },
@@ -979,12 +1123,16 @@ fun MessageInput(
                     focusedContainerColor = MaterialTheme.colorScheme.surface,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surface
                 ),
-                modifier = Modifier.weight(1f),
-                singleLine = true,
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester),  // ← НОВОЕ: привязываем FocusRequester
+                minLines = 2,  // ← НОВОЕ: минимум 2 строки
+                maxLines = 4,  // ← НОВОЕ: максимум 4 строки (авто-расширение)
                 enabled = !isLoading,
                 keyboardOptions = KeyboardOptions(
                     imeAction = Send,
-                    keyboardType = KeyboardType.Text
+                    keyboardType = KeyboardType.Text,
+                    capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences  // ← Авто-заглавные буквы
                 ),
                 keyboardActions = KeyboardActions(
                     onSend = {
@@ -992,9 +1140,11 @@ fun MessageInput(
                             onSendMessage(messageText.trim())
                         }
                     }
-                )
+                ),
+                shape = RoundedCornerShape(16.dp)  // ← Более округлые углы
             )
 
+            // Кнопка отправки
             IconButton(
                 onClick = {
                     if (messageText.isNotBlank() && !isLoading) {
@@ -1004,14 +1154,14 @@ fun MessageInput(
                 },
                 enabled = messageText.isNotBlank() && !isLoading,
                 modifier = Modifier
+                    .size(56.dp)  // ← Увеличенный размер
                     .background(
                         color = if (messageText.isNotBlank() && !isLoading)
                             MaterialTheme.colorScheme.primary
                         else
                             MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(16.dp)  // ← Скругленные углы
                     )
-                    .padding(4.dp)
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
@@ -1020,7 +1170,7 @@ fun MessageInput(
                         MaterialTheme.colorScheme.onPrimary
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(24.dp)  // ← Увеличенная иконка
                 )
             }
         }

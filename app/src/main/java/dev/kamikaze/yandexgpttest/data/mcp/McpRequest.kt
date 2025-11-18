@@ -1,4 +1,4 @@
-package dev.kamikaze.yandexgpttest.mcp
+package dev.kamikaze.yandexgpttest.data.mcp
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
