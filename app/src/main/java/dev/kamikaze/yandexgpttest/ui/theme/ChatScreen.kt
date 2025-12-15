@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +31,7 @@ import dev.kamikaze.yandexgpttest.data.StorageInfo
 import dev.kamikaze.yandexgpttest.ui.UserMessage
 import dev.kamikaze.yandexgpttest.ui.utils.ClearMemoryConfirmationDialog
 import dev.kamikaze.yandexgpttest.ui.utils.DeleteConfirmationDialog
+import dev.kamikaze.yandexgpttest.ui.utils.UserProfileSelectionDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +49,8 @@ fun ChatScreen(
     val hasSavedData by viewModel.hasSavedData.collectAsState()
     val storageInfo by viewModel.storageInfo.collectAsState()
     val isLoadingFromMemory by viewModel.isLoadingFromMemory.collectAsState()
+    val currentUserProfile by viewModel.currentUserProfile.collectAsState()
+    val showProfileSelectionDialog by viewModel.showProfileSelectionDialog.collectAsState()  // ← НОВОЕ
 
     val lazyListState = rememberLazyListState()
 
@@ -72,10 +76,20 @@ fun ChatScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Yandex AI",
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Column {
+                        Text(
+                            text = "Yandex AI",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        // Отображение текущего профиля
+                        currentUserProfile?.let { profile ->
+                            Text(
+                                text = "👤 ${profile.name}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -84,6 +98,19 @@ fun ChatScreen(
                         // Компактная статистика токенов
                         if (totalTokenStats.totalTokens > 0) {
                             CompactTokenStats(totalTokens = totalTokenStats.totalTokens)
+                        }
+
+                        // Кнопка смены профиля
+                        IconButton(
+                            onClick = { viewModel.changeUserProfile() },
+                            enabled = !isLoading
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "Сменить профиль",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
 
                         // Кнопка очистки памяти (только если есть данные)
@@ -205,6 +232,15 @@ fun ChatScreen(
             storageInfo = storageInfo,
             onConfirm = { viewModel.confirmClearMemory() },
             onDismiss = { viewModel.cancelClearMemory() }
+        )
+    }
+
+    // Диалог выбора профиля пользователя
+    if (showProfileSelectionDialog) {
+        UserProfileSelectionDialog(
+            currentProfile = currentUserProfile,
+            onProfileSelected = { profile -> viewModel.selectUserProfile(profile) },
+            onDismiss = { viewModel.dismissProfileSelectionDialog() }
         )
     }
 }

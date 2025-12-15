@@ -2,6 +2,7 @@ package dev.kamikaze.yandexgpttest.data
 
 import dev.kamikaze.yandexgpttest.data.MessageRequest.CompletionOptions
 import dev.kamikaze.yandexgpttest.data.MessageRequest.Message
+import dev.kamikaze.yandexgpttest.data.prompt.buildPersonalizedSystemPrompt
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.android.Android
@@ -20,7 +21,7 @@ import kotlinx.serialization.json.Json
 object YandexApi {
 
     private const val FOLDER_ID = "b1g2tlrstcpe0emue6gs"
-    private const val API_KEY = "AQVNxrs2XGfN19ibnrn8Ned2GRggIklo0Gw43ZpQ"
+    private const val API_KEY = "123"
 
     private val client = HttpClient(Android) {
         install(ContentNegotiation) {
@@ -92,8 +93,9 @@ object YandexApi {
     suspend fun sendMessage(
         userMessage: String,
         conversationHistory: List<Message> = emptyList(),
+        userProfile: UserProfile? = null
     ): ApiResponse {
-        val systemPrompt = "Ты - эксперт по искусственному интеллекту и анализу. Дай конкретный, детальный и полезный ответ."
+        val systemPrompt = buildPersonalizedSystemPrompt(userProfile)
 
         return try {
             val response = client.post("https://llm.api.cloud.yandex.net/foundationModels/v1/completion") {

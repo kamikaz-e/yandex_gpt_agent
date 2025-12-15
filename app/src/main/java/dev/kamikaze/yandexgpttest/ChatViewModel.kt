@@ -53,6 +53,13 @@ class ChatViewModel(
     private val _isLoadingFromMemory = MutableStateFlow(false)
     val isLoadingFromMemory: StateFlow<Boolean> = _isLoadingFromMemory.asStateFlow()
 
+    // Состояния для работы с профилями пользователей
+    private val _currentUserProfile = MutableStateFlow<UserProfile?>(null)
+    val currentUserProfile: StateFlow<UserProfile?> = _currentUserProfile.asStateFlow()
+
+    private val _showProfileSelectionDialog = MutableStateFlow(false)
+    val showProfileSelectionDialog: StateFlow<Boolean> = _showProfileSelectionDialog.asStateFlow()
+
     init {
         // При инициализации пытаемся загрузить сохраненные данные
         loadChatDataFromMemory()
@@ -73,7 +80,11 @@ class ChatViewModel(
 
                 val conversationHistory = buildConversationHistory()
 
-                val apiResponse = chatInteractor.sendMessage(message, conversationHistory)
+                val apiResponse = chatInteractor.sendMessage(
+                    message,
+                    conversationHistory,
+                    _currentUserProfile.value
+                )
 
                 val assistantMessage = UserMessage(
                     id = _messages.value.count(),
@@ -235,6 +246,7 @@ class ChatViewModel(
                     _totalTokenStats.value = savedData.totalTokenStats
                     _compactionConfig.value = savedData.compactionConfig
                     _compactionStats.value = savedData.compactionStats
+                    _currentUserProfile.value = savedData.currentUserProfile
 
                     _hasSavedData.value = true
                 } else {
@@ -244,9 +256,16 @@ class ChatViewModel(
                 // Обновляем информацию о хранилище
                 updateStorageInfo()
 
+                // Если профиль не выбран, показываем диалог выбора
+                if (_currentUserProfile.value == null) {
+                    _showProfileSelectionDialog.value = true
+                }
+
             } catch (e: Exception) {
                 e.printStackTrace()
                 _hasSavedData.value = false
+                // При ошибке загрузки также показываем диалог выбора профиля
+                _showProfileSelectionDialog.value = true
             } finally {
                 _isLoadingFromMemory.value = false
             }
@@ -263,7 +282,8 @@ class ChatViewModel(
                 messages = _messages.value,
                 totalTokenStats = _totalTokenStats.value,
                 compactionConfig = _compactionConfig.value,
-                compactionStats = _compactionStats.value
+                compactionStats = _compactionStats.value,
+                currentUserProfile = _currentUserProfile.value
             )
 
             updateStorageInfo()
@@ -333,6 +353,9 @@ class ChatViewModel(
 
         // Очищаем память при очистке чата
         clearSavedMemory()
+
+        // При очистке чата показываем диалог выбора профиля
+        _showProfileSelectionDialog.value = true
     }
 
     /**
@@ -342,5 +365,44 @@ class ChatViewModel(
         DataManager.clearChatData(applicationContext)
         _hasSavedData.value = false
         updateStorageInfo()
+    }
+
+    // ← МЕТОДЫ для работы с профилями пользователей
+
+    /**
+     * Скрывает диалог выбора профиля
+     */
+    fun dismissProfileSelectionDialog() {
+        _showProfileSelectionDialog.value = false
+    }
+
+    /**
+     * Устанавливает выбранный профиль пользователя
+     */
+    fun selectUserProfile(profile: UserProfile) {
+        _currentUserProfile.value = profile
+        _showProfileSelectionDialog.value = false
+
+        // Сохраняем выбранный профиль
+        saveChatDataToMemory()
+    }
+
+    /**
+     * Сменить профиль пользователя (очищает чат и показывает диалог выбора)
+     */
+    fun changeUserProfile() {
+        // Очищаем текущий чат
+        _messages.value = emptyList()
+        _totalTokenStats.value = TokenStats()
+        _compactionStats.value = CompactionStats()
+
+        // Сбрасываем текущий профиль
+        _currentUserProfile.value = null
+
+        // Очищаем сохраненные данные
+        clearSavedMemory()
+
+        // Показываем диалог выбора профиля
+        _showProfileSelectionDialog.value = true
     }
 }

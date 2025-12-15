@@ -1,8 +1,99 @@
 package dev.kamikaze.yandexgpttest.data.prompt
 
+import dev.kamikaze.yandexgpttest.data.CommunicationStyle
+import dev.kamikaze.yandexgpttest.data.UserProfile
+
 enum class AgentType(val displayName: String) {
     YANDEXGPT_RC("YandexGPT RC"),
     YANDEXGPT_LATEST("YandexGPT Latest")
+}
+
+/**
+ * Строит персонализированный системный промпт на основе профиля пользователя
+ */
+fun buildPersonalizedSystemPrompt(userProfile: UserProfile?): String {
+    if (userProfile == null) {
+        return "Ты - эксперт по искусственному интеллекту и анализу. Дай конкретный, детальный и полезный ответ."
+    }
+
+    val basePrompt = """
+        Ты - персональный AI-ассистент для ${userProfile.role}.
+
+        ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ:
+        - Имя: ${userProfile.name}
+        - Роль: ${userProfile.role}
+        - Опыт: ${userProfile.experience}
+
+        ОПИСАНИЕ:
+        ${userProfile.description}
+
+    """.trimIndent()
+
+    val communicationStylePrompt = when (userProfile.preferences.communicationStyle) {
+        CommunicationStyle.TECHNICAL -> """
+
+            СТИЛЬ ОБЩЕНИЯ:
+            - Используй технически точный и лаконичный язык
+            - Избегай избыточных объяснений базовых концепций
+            - Предоставляй конкретные примеры кода и решения
+            - Фокусируйся на практической реализации
+            - Упоминай лучшие практики и паттерны проектирования
+        """.trimIndent()
+
+        CommunicationStyle.ANALYTICAL -> """
+
+            СТИЛЬ ОБЩЕНИЯ:
+            - Задавай уточняющие вопросы для полного понимания контекста
+            - Анализируй требования и выявляй возможные проблемы заранее
+            - Предлагай несколько вариантов решения с анализом их плюсов и минусов
+            - Помогай формулировать четкие требования и критерии успеха
+            - Структурируй информацию в виде Use Cases, требований, ограничений
+        """.trimIndent()
+
+        CommunicationStyle.BALANCED -> """
+
+            СТИЛЬ ОБЩЕНИЯ:
+            - Балансируй между техническими деталями и бизнес-контекстом
+            - Предоставляй примеры и объяснения по необходимости
+            - Задавай вопросы при неясности требований
+        """.trimIndent()
+    }
+
+    val focusAreasPrompt = if (userProfile.preferences.focusAreas.isNotEmpty()) {
+        """
+
+            КЛЮЧЕВЫЕ ОБЛАСТИ ФОКУСА:
+            ${userProfile.preferences.focusAreas.joinToString("\n") { "- $it" }}
+
+            При ответах обращай особое внимание на эти области и, где возможно, связывай решения с этими концепциями.
+        """.trimIndent()
+    } else ""
+
+    val codeStylePrompt = userProfile.preferences.codeStyle?.let { codeStyle ->
+        val preferences = mutableListOf<String>()
+
+        if (codeStyle.cleanCodeFocus) {
+            preferences.add("Чистый код (Clean Code)")
+        }
+        if (codeStyle.patternsFocus) {
+            preferences.add("Паттерны проектирования (Design Patterns)")
+        }
+        if (codeStyle.preferredFrameworks.isNotEmpty()) {
+            preferences.add("Предпочитаемые фреймворки: ${codeStyle.preferredFrameworks.joinToString(", ")}")
+        }
+
+        if (preferences.isNotEmpty()) {
+            """
+
+                ПРЕДПОЧТЕНИЯ ПО КОДУ:
+                ${preferences.joinToString("\n") { "- $it" }}
+
+                При предоставлении примеров кода следуй этим принципам и используй указанные фреймворки.
+            """.trimIndent()
+        } else ""
+    } ?: ""
+
+    return basePrompt + communicationStylePrompt + focusAreasPrompt + codeStylePrompt
 }
 
 // Основной промпт для работы с экспертами
