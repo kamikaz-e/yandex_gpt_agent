@@ -16,11 +16,13 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.SemanticsProperties.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction.Companion.Send
@@ -28,6 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.kamikaze.yandexgpttest.ChatViewModel
 import dev.kamikaze.yandexgpttest.data.StorageInfo
+import dev.kamikaze.yandexgpttest.speech.SpeechRecognitionHelper
 import dev.kamikaze.yandexgpttest.ui.UserMessage
 import dev.kamikaze.yandexgpttest.ui.utils.ClearMemoryConfirmationDialog
 import dev.kamikaze.yandexgpttest.ui.utils.DeleteConfirmationDialog
@@ -37,12 +40,14 @@ import dev.kamikaze.yandexgpttest.ui.utils.UserProfileSelectionDialog
 @Composable
 fun ChatScreen(
     viewModel: ChatViewModel,
+    hasAudioPermission: Boolean,
+    onRequestAudioPermission: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val showDeleteDialog by viewModel.showDeleteDialog.collectAsState()
-    val showClearMemoryDialog by viewModel.showClearMemoryDialog.collectAsState() // ← НОВОЕ
+    val showClearMemoryDialog by viewModel.showClearMemoryDialog.collectAsState()
     val totalTokenStats by viewModel.totalTokenStats.collectAsState()
     val compactionConfig by viewModel.compactionConfig.collectAsState()
     val compactionStats by viewModel.compactionStats.collectAsState()
@@ -50,9 +55,12 @@ fun ChatScreen(
     val storageInfo by viewModel.storageInfo.collectAsState()
     val isLoadingFromMemory by viewModel.isLoadingFromMemory.collectAsState()
     val currentUserProfile by viewModel.currentUserProfile.collectAsState()
-    val showProfileSelectionDialog by viewModel.showProfileSelectionDialog.collectAsState()  // ← НОВОЕ
+    val showProfileSelectionDialog by viewModel.showProfileSelectionDialog.collectAsState()
+    val isListeningToSpeech by viewModel.isListeningToSpeech.collectAsState()
+    val speechRecognitionError by viewModel.speechRecognitionError.collectAsState()
 
     val lazyListState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(messages.size, isLoading) {
         if (messages.isNotEmpty()) {
@@ -60,7 +68,46 @@ fun ChatScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    LaunchedEffect(speechRecognitionError) {
+        speechRecognitionError?.let { error ->
+            snackbarHostState.showSnackbar(
+                message = error,
+                duration = SnackbarDuration.Short
+            )
+            viewModel.clearSpeechRecognitionError()
+        }
+    }
+
+    val context = LocalContext.current
+    val speechRecognitionHelper = remember {
+        SpeechRecognitionHelper(
+            context = context,
+            onResultCallback = { text -> viewModel.onSpeechRecognitionResult(text) },
+            onErrorCallback = { error -> viewModel.onSpeechRecognitionError(error) },
+            onReadyForSpeechCallback = { /* Можно добавить индикацию готовности */ },
+            onEndOfSpeechCallback = { /* Речь закончилась */ }
+        )
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            speechRecognitionHelper.destroy()
+        }
+    }
+
+    LaunchedEffect(isListeningToSpeech) {
+        if (isListeningToSpeech && hasAudioPermission) {
+            speechRecognitionHelper.startListening()
+        } else if (!isListeningToSpeech) {
+            speechRecognitionHelper.stopListening()
+        }
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+    ) { paddingValues ->
+        Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
         Surface(
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 1.dp,
@@ -213,10 +260,23 @@ fun ChatScreen(
 
         MessageInput(
             isLoading = isLoading,
+            isListeningToSpeech = isListeningToSpeech,
+            hasAudioPermission = hasAudioPermission,
             onSendMessage = { message ->
                 viewModel.sendMessage(message)
+            },
+            onStartVoiceInput = {
+                if (hasAudioPermission) {
+                    viewModel.startListeningToSpeech()
+                } else {
+                    onRequestAudioPermission()
+                }
+            },
+            onStopVoiceInput = {
+                viewModel.stopListeningToSpeech()
             }
         )
+        }
     }
 
     // Диалоги
@@ -800,7 +860,11 @@ fun ChatMessage(
 fun MessageInput(
     modifier: Modifier = Modifier,
     isLoading: Boolean,
+    isListeningToSpeech: Boolean,
+    hasAudioPermission: Boolean,
     onSendMessage: (String) -> Unit,
+    onStartVoiceInput: () -> Unit,
+    onStopVoiceInput: () -> Unit,
 ) {
     var messageText by remember { mutableStateOf("") }
 
@@ -852,6 +916,40 @@ fun MessageInput(
                 )
             )
 
+            // Кнопка микрофона
+            IconButton(
+                onClick = {
+                    if (isListeningToSpeech) {
+                        onStopVoiceInput()
+                    } else {
+                        onStartVoiceInput()
+                    }
+                },
+                enabled = !isLoading && messageText.isBlank(),
+                modifier = Modifier
+                    .background(
+                        color = when {
+                            isListeningToSpeech -> MaterialTheme.colorScheme.error
+                            !isLoading && messageText.isBlank() -> MaterialTheme.colorScheme.tertiary
+                            else -> MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .padding(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Mic,
+                    contentDescription = if (isListeningToSpeech) "Остановить запись" else "Голосовой ввод",
+                    tint = when {
+                        isListeningToSpeech -> MaterialTheme.colorScheme.onError
+                        !isLoading && messageText.isBlank() -> MaterialTheme.colorScheme.onTertiary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Кнопка отправки
             IconButton(
                 onClick = {
                     if (messageText.isNotBlank() && !isLoading) {

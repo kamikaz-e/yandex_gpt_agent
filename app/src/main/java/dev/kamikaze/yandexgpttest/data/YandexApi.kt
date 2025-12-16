@@ -21,7 +21,7 @@ import kotlinx.serialization.json.Json
 object YandexApi {
 
     private const val FOLDER_ID = "b1g2tlrstcpe0emue6gs"
-    private const val API_KEY = "123"
+    private const val API_KEY = "AQVNzL6Xq_kTDZqTw-1"
 
     private val client = HttpClient(Android) {
         install(ContentNegotiation) {

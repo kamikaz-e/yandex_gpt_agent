@@ -60,6 +60,16 @@ class ChatViewModel(
     private val _showProfileSelectionDialog = MutableStateFlow(false)
     val showProfileSelectionDialog: StateFlow<Boolean> = _showProfileSelectionDialog.asStateFlow()
 
+    // Состояния для голосового ввода
+    private val _isListeningToSpeech = MutableStateFlow(false)
+    val isListeningToSpeech: StateFlow<Boolean> = _isListeningToSpeech.asStateFlow()
+
+    private val _recognizedText = MutableStateFlow("")
+    val recognizedText: StateFlow<String> = _recognizedText.asStateFlow()
+
+    private val _speechRecognitionError = MutableStateFlow<String?>(null)
+    val speechRecognitionError: StateFlow<String?> = _speechRecognitionError.asStateFlow()
+
     init {
         // При инициализации пытаемся загрузить сохраненные данные
         loadChatDataFromMemory()
@@ -404,5 +414,51 @@ class ChatViewModel(
 
         // Показываем диалог выбора профиля
         _showProfileSelectionDialog.value = true
+    }
+
+    // ← МЕТОДЫ для работы с голосовым вводом
+
+    /**
+     * Начинает прослушивание речи
+     */
+    fun startListeningToSpeech() {
+        _isListeningToSpeech.value = true
+        _recognizedText.value = ""
+        _speechRecognitionError.value = null
+    }
+
+    /**
+     * Останавливает прослушивание речи
+     */
+    fun stopListeningToSpeech() {
+        _isListeningToSpeech.value = false
+    }
+
+    /**
+     * Обрабатывает результат распознавания речи
+     */
+    fun onSpeechRecognitionResult(text: String) {
+        _recognizedText.value = text
+        _isListeningToSpeech.value = false
+
+        // Автоматически отправляем распознанное сообщение
+        if (text.isNotBlank()) {
+            sendMessage(text)
+        }
+    }
+
+    /**
+     * Обрабатывает ошибку распознавания речи
+     */
+    fun onSpeechRecognitionError(error: String) {
+        _speechRecognitionError.value = error
+        _isListeningToSpeech.value = false
+    }
+
+    /**
+     * Очищает ошибку распознавания речи
+     */
+    fun clearSpeechRecognitionError() {
+        _speechRecognitionError.value = null
     }
 }
