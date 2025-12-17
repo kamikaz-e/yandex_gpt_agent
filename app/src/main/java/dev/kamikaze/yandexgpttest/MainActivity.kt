@@ -13,7 +13,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
-import dev.kamikaze.yandexgpttest.data.YandexApi
+import dev.kamikaze.yandexgpttest.data.ApiClientFactory
+import dev.kamikaze.yandexgpttest.data.ApiSettings
 import dev.kamikaze.yandexgpttest.domain.ChatInteractor
 import dev.kamikaze.yandexgpttest.ui.theme.ChatScreen
 import dev.kamikaze.yandexgpttest.ui.theme.YandexGptTestTheme
@@ -35,8 +36,8 @@ class MainActivity : ComponentActivity() {
         checkAudioPermission()
 
         setContent {
-            val yandexApi = YandexApi
-            val chatInteractor = ChatInteractor(yandexApi)
+            val apiClient = ApiClientFactory.create(ApiSettings())
+            val chatInteractor = ChatInteractor(apiClient)
             val viewModel = ChatViewModel(chatInteractor, applicationContext)
             YandexGptTestTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->

@@ -28,7 +28,8 @@ object DataManager {
         totalTokenStats: TokenStats,
         compactionConfig: CompactionConfig,
         compactionStats: CompactionStats,
-        currentUserProfile: UserProfile? = null
+        currentUserProfile: UserProfile? = null,
+        apiSettings: ApiSettings = ApiSettings()
     ) {
         try {
             val chatData = ChatMemoryData(
@@ -37,6 +38,7 @@ object DataManager {
                 compactionConfig = compactionConfig,
                 compactionStats = compactionStats,
                 currentUserProfile = currentUserProfile,
+                apiSettings = apiSettings,
                 savedAt = System.currentTimeMillis(),
                 version = "1.0"
             )
@@ -157,6 +159,7 @@ data class ChatMemoryData(
     val compactionConfig: CompactionConfig,
     val compactionStats: CompactionStats,
     val currentUserProfile: UserProfile? = null,
+    val apiSettings: ApiSettings = ApiSettings(),
     val savedAt: Long,
     val version: String
 )

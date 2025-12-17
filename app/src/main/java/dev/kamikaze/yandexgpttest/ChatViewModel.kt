@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class ChatViewModel(
-    private val chatInteractor: ChatInteractor,
+    private var chatInteractor: ChatInteractor,
     private val applicationContext: Context  // Добавляем Context для работы с файлами
 ) : ViewModel() {
 
@@ -69,6 +69,13 @@ class ChatViewModel(
 
     private val _speechRecognitionError = MutableStateFlow<String?>(null)
     val speechRecognitionError: StateFlow<String?> = _speechRecognitionError.asStateFlow()
+
+    // Состояния для работы с API окружением
+    private val _apiSettings = MutableStateFlow(ApiSettings())
+    val apiSettings: StateFlow<ApiSettings> = _apiSettings.asStateFlow()
+
+    private val _showApiSettingsDialog = MutableStateFlow(false)
+    val showApiSettingsDialog: StateFlow<Boolean> = _showApiSettingsDialog.asStateFlow()
 
     init {
         // При инициализации пытаемся загрузить сохраненные данные
@@ -196,7 +203,7 @@ class ChatViewModel(
             )
         }
 
-        val summaryResponse = YandexApi.createSummary(historyForSummary)
+        val summaryResponse = chatInteractor.createSummary(historyForSummary)
 
         val summaryMessage = UserMessage(
             id = existingSummaries.size,
@@ -257,6 +264,10 @@ class ChatViewModel(
                     _compactionConfig.value = savedData.compactionConfig
                     _compactionStats.value = savedData.compactionStats
                     _currentUserProfile.value = savedData.currentUserProfile
+                    _apiSettings.value = savedData.apiSettings
+
+                    // Пересоздаем chatInteractor с новыми настройками
+                    updateChatInteractor()
 
                     _hasSavedData.value = true
                 } else {
@@ -293,7 +304,8 @@ class ChatViewModel(
                 totalTokenStats = _totalTokenStats.value,
                 compactionConfig = _compactionConfig.value,
                 compactionStats = _compactionStats.value,
-                currentUserProfile = _currentUserProfile.value
+                currentUserProfile = _currentUserProfile.value,
+                apiSettings = _apiSettings.value
             )
 
             updateStorageInfo()
@@ -460,5 +472,39 @@ class ChatViewModel(
      */
     fun clearSpeechRecognitionError() {
         _speechRecognitionError.value = null
+    }
+
+    // ← МЕТОДЫ для работы с API окружением
+
+    /**
+     * Показывает диалог настроек API
+     */
+    fun showApiSettingsDialog() {
+        _showApiSettingsDialog.value = true
+    }
+
+    /**
+     * Скрывает диалог настроек API
+     */
+    fun dismissApiSettingsDialog() {
+        _showApiSettingsDialog.value = false
+    }
+
+    /**
+     * Обновляет настройки API
+     */
+    fun updateApiSettings(newSettings: ApiSettings) {
+        _apiSettings.value = newSettings
+        updateChatInteractor()
+        saveChatDataToMemory()
+        _showApiSettingsDialog.value = false
+    }
+
+    /**
+     * Пересоздает chatInteractor с текущими настройками API
+     */
+    private fun updateChatInteractor() {
+        val apiClient = ApiClientFactory.create(_apiSettings.value)
+        chatInteractor = ChatInteractor(apiClient)
     }
 }

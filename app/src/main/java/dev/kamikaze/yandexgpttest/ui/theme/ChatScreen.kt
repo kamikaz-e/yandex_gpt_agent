@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +33,7 @@ import dev.kamikaze.yandexgpttest.ChatViewModel
 import dev.kamikaze.yandexgpttest.data.StorageInfo
 import dev.kamikaze.yandexgpttest.speech.SpeechRecognitionHelper
 import dev.kamikaze.yandexgpttest.ui.UserMessage
+import dev.kamikaze.yandexgpttest.ui.utils.ApiSettingsDialog
 import dev.kamikaze.yandexgpttest.ui.utils.ClearMemoryConfirmationDialog
 import dev.kamikaze.yandexgpttest.ui.utils.DeleteConfirmationDialog
 import dev.kamikaze.yandexgpttest.ui.utils.UserProfileSelectionDialog
@@ -58,6 +60,8 @@ fun ChatScreen(
     val showProfileSelectionDialog by viewModel.showProfileSelectionDialog.collectAsState()
     val isListeningToSpeech by viewModel.isListeningToSpeech.collectAsState()
     val speechRecognitionError by viewModel.speechRecognitionError.collectAsState()
+    val apiSettings by viewModel.apiSettings.collectAsState()
+    val showApiSettingsDialog by viewModel.showApiSettingsDialog.collectAsState()
 
     val lazyListState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -125,7 +129,7 @@ fun ChatScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Yandex AI",
+                            text = "AI Agent",
                             style = MaterialTheme.typography.titleMedium
                         )
                         // Отображение текущего профиля
@@ -145,6 +149,19 @@ fun ChatScreen(
                         // Компактная статистика токенов
                         if (totalTokenStats.totalTokens > 0) {
                             CompactTokenStats(totalTokens = totalTokenStats.totalTokens)
+                        }
+
+                        // Кнопка настроек API
+                        IconButton(
+                            onClick = { viewModel.showApiSettingsDialog() },
+                            enabled = !isLoading
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Настройки API",
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
 
                         // Кнопка смены профиля
@@ -303,6 +320,15 @@ fun ChatScreen(
             onDismiss = { viewModel.dismissProfileSelectionDialog() }
         )
     }
+
+    // Диалог настроек API
+    if (showApiSettingsDialog) {
+        ApiSettingsDialog(
+            currentSettings = apiSettings,
+            onConfirm = { newSettings -> viewModel.updateApiSettings(newSettings) },
+            onDismiss = { viewModel.dismissApiSettingsDialog() }
+        )
+    }
 }
 
 // ← НОВЫЙ КОМПОНЕНТ: Компактная статистика токенов
@@ -423,7 +449,7 @@ fun CompactSettingsPanel(
                     .fillMaxWidth()
                     .padding(top = 8.dp)
             ) {
-                androidx.compose.material3.Divider(
+                HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                     thickness = 0.5.dp
                 )
