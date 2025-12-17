@@ -77,6 +77,9 @@ class ChatViewModel(
     private val _showApiSettingsDialog = MutableStateFlow(false)
     val showApiSettingsDialog: StateFlow<Boolean> = _showApiSettingsDialog.asStateFlow()
 
+    // Ассистент команды
+    private val taskAssistant = dev.kamikaze.yandexgpttest.data.assistant.TaskAssistant(applicationContext)
+
     init {
         // При инициализации пытаемся загрузить сохраненные данные
         loadChatDataFromMemory()
@@ -95,26 +98,32 @@ class ChatViewModel(
                 )
                 _messages.value += userMessage
 
-                val conversationHistory = buildConversationHistory()
+                // Проверяем, нужно ли обработать через ассистента команды
+                if (_apiSettings.value.taskAssistantEnabled && isTaskCommand(message)) {
+                    handleTaskAssistantCommand(message)
+                } else {
+                    // Обычная обработка через API
+                    val conversationHistory = buildConversationHistory()
 
-                val apiResponse = chatInteractor.sendMessage(
-                    message,
-                    conversationHistory,
-                    _currentUserProfile.value
-                )
+                    val apiResponse = chatInteractor.sendMessage(
+                        message,
+                        conversationHistory,
+                        _currentUserProfile.value
+                    )
 
-                val assistantMessage = UserMessage(
-                    id = _messages.value.count(),
-                    text = apiResponse.text,
-                    isUser = false,
-                    tokens = apiResponse.tokens
-                )
-                _messages.value += assistantMessage
+                    val assistantMessage = UserMessage(
+                        id = _messages.value.count(),
+                        text = apiResponse.text,
+                        isUser = false,
+                        tokens = apiResponse.tokens
+                    )
+                    _messages.value += assistantMessage
 
-                updateTotalTokens(apiResponse.tokens)
+                    updateTotalTokens(apiResponse.tokens)
 
-                if (_compactionConfig.value.enabled) {
-                    checkAndCompressHistory()
+                    if (_compactionConfig.value.enabled) {
+                        checkAndCompressHistory()
+                    }
                 }
 
                 // Автоматическое сохранение после каждого изменения
@@ -135,6 +144,40 @@ class ChatViewModel(
                 _isLoading.value = false
             }
         }
+    }
+
+    /**
+     * Проверка, является ли сообщение командой для ассистента
+     */
+    private fun isTaskCommand(message: String): Boolean {
+        val lowerMessage = message.lowercase()
+        return lowerMessage.contains("создать задач") ||
+                lowerMessage.contains("создай задач") ||
+                lowerMessage.contains("добавить задач") ||
+                lowerMessage.contains("добавь задач") ||
+                lowerMessage.contains("покажи задач") ||
+                lowerMessage.contains("список задач") ||
+                lowerMessage.contains("что делать") ||
+                lowerMessage.contains("приоритет") ||
+                lowerMessage.contains("create task") ||
+                lowerMessage.contains("add task") ||
+                lowerMessage.contains("show task") ||
+                lowerMessage.contains("list task")
+    }
+
+    /**
+     * Обработка команды ассистента
+     */
+    private suspend fun handleTaskAssistantCommand(message: String) {
+        val response = taskAssistant.processMessage(message)
+
+        val assistantMessage = UserMessage(
+            id = _messages.value.count(),
+            text = response.message,
+            isUser = false,
+            tokens = null
+        )
+        _messages.value += assistantMessage
     }
 
     private fun buildConversationHistory(): List<MessageRequest.Message> {

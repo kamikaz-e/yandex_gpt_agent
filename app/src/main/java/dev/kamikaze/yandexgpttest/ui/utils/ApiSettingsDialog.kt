@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -22,6 +23,7 @@ fun ApiSettingsDialog(
     var selectedEnvironment by remember { mutableStateOf(currentSettings.environment) }
     var localLlmUrl by remember { mutableStateOf(currentSettings.localLlmUrl) }
     var localLlmModel by remember { mutableStateOf(currentSettings.localLlmModel) }
+    var taskAssistantEnabled by remember { mutableStateOf(currentSettings.taskAssistantEnabled) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -99,9 +101,50 @@ fun ApiSettingsDialog(
                     )
 
                     Text(
-                        "Примеры моделей: llama3.2:3b, qwen2.5:14b, mistral:7b",
+                        "Примеры моделей: llama3:14b",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Настройки ассистента команды
+                HorizontalDivider()
+
+                Text(
+                    "Ассистент команды:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Управление задачами",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            "Создавайте задачи, отслеживайте приоритеты и получайте рекомендации",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = taskAssistantEnabled,
+                        onCheckedChange = { taskAssistantEnabled = it }
+                    )
+                }
+
+                if (taskAssistantEnabled) {
+                    Text(
+                        "📋 Примеры команд:\n" +
+                                "• Создать задачу: исправить баг\n" +
+                                "• Покажи задачи\n" +
+                                "• Что делать в первую очередь?",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -113,7 +156,8 @@ fun ApiSettingsDialog(
                         ApiSettings(
                             environment = selectedEnvironment,
                             localLlmUrl = localLlmUrl.trim(),
-                            localLlmModel = localLlmModel.trim()
+                            localLlmModel = localLlmModel.trim(),
+                            taskAssistantEnabled = taskAssistantEnabled
                         )
                     )
                 }

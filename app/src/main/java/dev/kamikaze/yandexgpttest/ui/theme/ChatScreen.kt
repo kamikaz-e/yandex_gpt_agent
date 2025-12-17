@@ -750,7 +750,7 @@ fun LoadingMessageItem(modifier: Modifier = Modifier) {
                 )
                 Column {
                     Text(
-                        text = "Yandex AI анализирует...",
+                        text = "AI анализирует...",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
